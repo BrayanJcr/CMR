@@ -1,0 +1,6 @@
+﻿CRM.WhatsappCola
+- prod: 5050,5150
+- uat:  5250,5350
+- dev:  5450,5550
+
+- Cliente qr test: 5050,5150

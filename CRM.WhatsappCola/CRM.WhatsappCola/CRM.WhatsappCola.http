@@ -1,0 +1,6 @@
+﻿@CRM.WhatsappCola_HostAddress = http://localhost:5216
+
+GET {{CRM.WhatsappCola_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

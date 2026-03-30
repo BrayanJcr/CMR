@@ -1,0 +1,17 @@
+version: '3.8'
+services:
+  api:
+    build: .
+    container_name: api_waqr
+    restart: always
+    networks:
+      - backend_wa
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./sesiones:/usr/src/app/sesiones
+      - .env:/usr/src/app/.env
+
+networks:
+  backend_wa:
+    driver: bridge

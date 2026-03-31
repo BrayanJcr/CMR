@@ -11,6 +11,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../api/axios'
 import { getInitials } from '../utils/format'
+import useHubConnection from '../hooks/useHubConnection'
 
 const { Sider, Header, Content } = Layout
 const { Text } = Typography
@@ -42,18 +43,17 @@ export default function AppLayout({ children }) {
   const pageTitle = PAGE_TITLES[currentPath] || 'CRM WhatsApp'
 
   useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const res = await api.get('/Configuracion/whatsapp_estado')
-        setWaStatus(res.data)
-      } catch {
-        setWaStatus(null)
-      }
-    }
-    fetchStatus()
-    const interval = setInterval(fetchStatus, 10000)
-    return () => clearInterval(interval)
+    // Carga inicial del estado
+    api.get('/Configuracion/whatsapp_estado')
+      .then(res => setWaStatus(res.data))
+      .catch(() => setWaStatus(null))
   }, [])
+
+  // SignalR: actualizar estado cuando WhatsApp se conecta o recibe QR
+  useHubConnection('/hub-qr', {
+    NuevoNumero: () => setWaStatus('conectado'),
+    NuevoQr:    () => setWaStatus('iniciando')
+  })
 
   const menuItems = [
     { key: '/', icon: <DashboardOutlined />, label: 'Dashboard' },
@@ -82,7 +82,9 @@ export default function AppLayout({ children }) {
     }
   ]
 
-  const isConnected = waStatus === 'conectado' || waStatus === true || waStatus?.estado === 'conectado'
+  const isConnected = waStatus === 'conectado' || waStatus === true
+    || waStatus?.valor === 'conectado' || waStatus?.Valor === 'conectado'
+    || waStatus?.estado === 'conectado' || waStatus?.Estado === 'conectado'
 
   return (
     <Layout style={{ minHeight: '100vh' }}>

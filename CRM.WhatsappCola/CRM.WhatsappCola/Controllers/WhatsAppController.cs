@@ -100,5 +100,20 @@ namespace CRM.WhatsappCola.Controllers
                 return BadRequest(ex.Message + (ex.InnerException != null ? " - " + ex.InnerException.Message : ""));
             }
         }
+
+        [HttpPost("cerrar-sesion")]
+        public async Task<IActionResult> CerrarSesion([FromBody] WhatsAppCerrarSesionDTO dto)
+        {
+            try
+            {
+                var cola = new ColaService(_db);
+                var resultado = cola.CerrarSesion(dto?.Numero);
+                return Ok(resultado);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message + (ex.InnerException != null ? " - " + ex.InnerException.Message : ""));
+            }
+        }
     }
 }

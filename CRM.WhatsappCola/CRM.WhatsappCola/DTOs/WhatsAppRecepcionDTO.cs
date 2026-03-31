@@ -6,8 +6,7 @@ namespace CRM.WhatsappCola.DTOs
     {
         [Required]
         public string NumeroDestino { get; set; }
-        [Required]
-        public string NumeroOrigen { get; set; }
+        public string? NumeroOrigen { get; set; }
         public string? Mensage { get; set; }
         public string? AdjuntoBase64 { get; set; }
         public string? NombreArchivo { get; set; }

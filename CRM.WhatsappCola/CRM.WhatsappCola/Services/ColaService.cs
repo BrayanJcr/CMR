@@ -9,6 +9,7 @@ namespace CRM.WhatsappCola.Services
 {
     public class ColaService
     {
+        private const string UsuarioConfigSistema = "wa-recepcion";
         private WA_ColaContext _db;
 
         public ColaService(WA_ColaContext db)
@@ -20,10 +21,17 @@ namespace CRM.WhatsappCola.Services
         {
             ResultadoAgendarDTO respuesta = new ResultadoAgendarDTO() { Estado = false };
 
-            //validaciones
-            if (agendarDto.NumeroOrigen.Length != 11)
+            // Si no viene NumeroOrigen, usar el número activo guardado en BD
+            if (string.IsNullOrWhiteSpace(agendarDto.NumeroOrigen))
             {
-                respuesta.Respuesta = "El número de origen no tiene la longitud requerida";
+                agendarDto.NumeroOrigen = _db.TConfiguracionSistema
+                    .FirstOrDefault(c => c.Clave == "whatsapp_numero")?.Valor;
+            }
+
+            //validaciones
+            if (string.IsNullOrWhiteSpace(agendarDto.NumeroOrigen) || agendarDto.NumeroOrigen.Length != 11)
+            {
+                respuesta.Respuesta = "El número de origen no tiene la longitud requerida o no está configurado";
                 return respuesta;
             }
             if (agendarDto.NumeroDestino.Length != 11)
@@ -358,6 +366,55 @@ namespace CRM.WhatsappCola.Services
             }
 
             return respuesta;
+        }
+
+        public ResultadoCerrarSesionDTO CerrarSesion(string numero)
+        {
+            ResultadoCerrarSesionDTO respuesta = new ResultadoCerrarSesionDTO() { Estado = false };
+
+            try
+            {
+                string numeroObjetivo = string.IsNullOrWhiteSpace(numero)
+                    ? _db.TConfiguracionSistema.FirstOrDefault(c => c.Clave == "whatsapp_numero")?.Valor
+                    : numero;
+
+                if (string.IsNullOrWhiteSpace(numeroObjetivo))
+                {
+                    respuesta.Respuesta = "No existe un número activo configurado";
+                    return respuesta;
+                }
+
+                WaQrService waService = new WaQrService();
+                WARespuestaDTO resultadoApi = waService.CerrarSesion(numeroObjetivo);
+
+                respuesta.Respuesta = resultadoApi.Mensage;
+                respuesta.Estado = resultadoApi.Estado;
+
+                if (resultadoApi.Estado)
+                {
+                    ActualizarConfiguracionLocal("whatsapp_estado", "desconectado");
+                    ActualizarConfiguracionLocal("whatsapp_qr", string.Empty);
+                    ActualizarConfiguracionLocal("whatsapp_numero", string.Empty);
+                    _db.SaveChanges();
+                }
+            }
+            catch (Exception ex)
+            {
+                respuesta.Estado = false;
+                respuesta.Respuesta = $"Ocurrión un error al cerrar la sesión - {ex.Message} {(ex.InnerException != null ? ex.InnerException.Message : "")}";
+            }
+
+            return respuesta;
+        }
+
+        private void ActualizarConfiguracionLocal(string clave, string valor)
+        {
+            var config = _db.TConfiguracionSistema.FirstOrDefault(c => c.Clave == clave);
+            if (config == null) return;
+
+            config.Valor = valor;
+            config.UsuarioModificacion = UsuarioConfigSistema;
+            config.FechaModificacion = DateTime.Now;
         }
 
 

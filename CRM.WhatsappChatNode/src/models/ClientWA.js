@@ -1,4 +1,7 @@
 require('dotenv').config()
+
+// Activar debug interno de whatsapp-web.js
+process.env.DEBUG = 'whatsapp-web.js:*';
 const { Client, LocalAuth, MessageMedia, Buttons } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const axios = require('axios');
@@ -51,6 +54,17 @@ class ClientWA {
         console.log(`inicializar Cliente: ${this.numero}`)
 
         //eventos
+        this.cliente.on('change_state', (state) => {
+            console.log(`[DEBUG] Estado cambiado:`, state);
+        });
+
+        this.cliente.on('auth_failure', (data) => {
+            console.error(`[DEBUG] Fallo de autenticación:`, data);
+        });
+
+        this.cliente.on('disconnected', (reason) => {
+            console.warn(`[DEBUG] Cliente desconectado. Razón:`, reason);
+        });
         this.cliente.on('qr', async qr => {
             console.log(`Código QR desde desde: ${this.numero}, --------------`, qr);
             qrcode.generate(qr, {
@@ -77,7 +91,7 @@ class ClientWA {
             this.estaInicializando = false;
 
             this.numero = this.cliente.info.wid.user;
-            console.log(`Client is ready: ${this.numero}`);
+            console.log(`[DEBUG] Client is ready: ${this.numero}`);
 
             //recepcion del numero
             console.log(`INFO READY:----------`, JSON.stringify(this.cliente.info));
@@ -233,7 +247,7 @@ class ClientWA {
             this.estaActivo = true;
             this.estaInicializando = false;
 
-            console.log(`Client authenticated: ${this.numero}`, data);
+            console.log(`[DEBUG] Client authenticated: ${this.numero}`, data);
         });
 
         //inicializacion

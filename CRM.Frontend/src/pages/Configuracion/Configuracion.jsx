@@ -6,7 +6,7 @@ import {
 } from 'antd'
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined,
-  WifiOutlined, DisconnectOutlined
+  WifiOutlined, DisconnectOutlined, QrcodeOutlined
 } from '@ant-design/icons'
 import api from '../../api/axios'
 
@@ -14,10 +14,38 @@ const { Title, Text } = Typography
 const { Option } = Select
 
 export default function Configuracion() {
+  // Botón global para limpiar sesión y reiniciar Node
+  const limpiarYReiniciarNodeBtn = (
+    <Button
+      type="dashed"
+      style={{ marginLeft: 16 }}
+      onClick={async () => {
+        let result = ''
+        try {
+          const clean = await fetch('http://localhost:3000/admin/limpiar-sesion', { method: 'POST' }).then(r => r)
+          const restart = await fetch('http://localhost:3000/admin/reiniciar', { method: 'POST' }).then(r => r)
+          result = `Sesión limpiada: ${clean.status}\nNode reiniciado: ${restart.status}`
+        } catch (err) {
+          result = err?.response ? `Status: ${err.response.status}\n${JSON.stringify(err.response.data, null, 2)}` : String(err)
+        }
+        Modal.info({
+          title: 'Resultado limpieza y reinicio Node',
+          content: <pre style={{ whiteSpace: 'pre-wrap' }}>{result}</pre>,
+          width: 600
+        })
+      }}
+    >
+      Limpiar sesión y reiniciar Node
+    </Button>
+  )
   const [waStatus, setWaStatus] = useState(null)
   const [waNumero, setWaNumero] = useState(null)
   const [waQr, setWaQr] = useState(null)
   const [waLoading, setWaLoading] = useState(false)
+  const [waClosing, setWaClosing] = useState(false)
+  const [qrLoading, setQrLoading] = useState(false)
+  const autoConnectRef = useRef(false)
+  const waitStatusPollRef = useRef(null)
   const [usuarios, setUsuarios] = useState([])
   const [etapas, setEtapas] = useState([])
   const [etiquetas, setEtiquetas] = useState([])
@@ -39,13 +67,22 @@ export default function Configuracion() {
   const [etapaForm] = Form.useForm()
   const [etiquetaForm] = Form.useForm()
   const qrPollRef = useRef(null)
+  const normalizedStatus = typeof waStatus === 'string'
+    ? waStatus
+    : typeof waStatus === 'boolean'
+      ? (waStatus ? 'conectado' : 'desconectado')
+      : waStatus?.valor || waStatus?.Valor || waStatus?.estado || waStatus?.Estado || null
+  const isConnected = normalizedStatus === 'conectado'
+  const isStarting = normalizedStatus === 'iniciando'
 
   const fetchWaStatus = useCallback(async () => {
     try {
       const res = await api.get('/Configuracion/whatsapp_estado')
-      setWaStatus(res.data)
-      return res.data
+      const value = res.data?.valor ?? res.data?.Valor ?? res.data?.estado ?? res.data?.Estado ?? res.data ?? null
+      setWaStatus(value)
+      return value
     } catch {
+      setWaStatus(null)
       return null
     }
   }, [])
@@ -54,13 +91,14 @@ export default function Configuracion() {
     try {
       const res = await api.get('/WhatsApp/obtenerNumero')
       setWaNumero(res.data?.numero || res.data?.Numero || null)
-    } catch {}
+    } catch { }
   }, [])
 
   const fetchWaQr = useCallback(async () => {
     try {
       const res = await api.get('/Configuracion/whatsapp_qr')
-      setWaQr(res.data?.qr || res.data?.Qr || res.data || null)
+      const value = res.data?.valor ?? res.data?.Valor ?? res.data?.qr ?? res.data?.Qr ?? res.data ?? null
+      setWaQr(typeof value === 'string' ? value : null)
     } catch {
       setWaQr(null)
     }
@@ -71,7 +109,7 @@ export default function Configuracion() {
       const res = await api.get('/Usuario')
       const data = Array.isArray(res.data) ? res.data : (res.data?.items || [])
       setUsuarios(data)
-    } catch {}
+    } catch { }
   }, [])
 
   const fetchEtapas = useCallback(async () => {
@@ -79,7 +117,7 @@ export default function Configuracion() {
       const res = await api.get('/Pipeline/etapas')
       const data = Array.isArray(res.data) ? res.data : (res.data?.items || [])
       setEtapas(data)
-    } catch {}
+    } catch { }
   }, [])
 
   const fetchEtiquetas = useCallback(async () => {
@@ -87,7 +125,7 @@ export default function Configuracion() {
       const res = await api.get('/Etiqueta')
       const data = Array.isArray(res.data) ? res.data : (res.data?.items || [])
       setEtiquetas(data)
-    } catch {}
+    } catch { }
   }, [])
 
   const fetchConfig = useCallback(async () => {
@@ -112,7 +150,7 @@ export default function Configuracion() {
         const val = results[3].value.data
         setMonedaDefault(typeof val === 'string' ? val : val?.valor || val?.Valor || 'USD')
       }
-    } catch {}
+    } catch { }
   }, [])
 
   useEffect(() => {
@@ -132,8 +170,14 @@ export default function Configuracion() {
   }, [fetchWaStatus, fetchWaNumero, fetchUsuarios, fetchEtapas, fetchEtiquetas, fetchConfig])
 
   useEffect(() => {
-    const estadoStr = typeof waStatus === 'string' ? waStatus : waStatus?.estado
-    if (estadoStr === 'iniciando') {
+    if (normalizedStatus === 'iniciando' || normalizedStatus === 'conectado') {
+      // Ya tenemos estado → cancelar el polling de espera
+      if (waitStatusPollRef.current) {
+        clearInterval(waitStatusPollRef.current)
+        waitStatusPollRef.current = null
+      }
+    }
+    if (normalizedStatus === 'iniciando') {
       fetchWaQr()
       qrPollRef.current = setInterval(async () => {
         const status = await fetchWaStatus()
@@ -148,19 +192,88 @@ export default function Configuracion() {
     } else {
       if (qrPollRef.current) clearInterval(qrPollRef.current)
     }
-    return () => { if (qrPollRef.current) clearInterval(qrPollRef.current) }
-  }, [waStatus, fetchWaQr, fetchWaStatus, fetchWaNumero])
+    return () => {
+      if (qrPollRef.current) clearInterval(qrPollRef.current)
+      if (waitStatusPollRef.current) clearInterval(waitStatusPollRef.current)
+    }
+  }, [normalizedStatus, fetchWaQr, fetchWaStatus, fetchWaNumero])
 
   const handleConectar = async () => {
     setWaLoading(true)
+    // Limpiar polling anterior si existe
+    if (waitStatusPollRef.current) {
+      clearInterval(waitStatusPollRef.current)
+      waitStatusPollRef.current = null
+    }
     try {
       await api.post('/WhatsApp/iniciar-cliente')
-      message.success('Iniciando WhatsApp...')
-      await fetchWaStatus()
-    } catch {
+      message.success('Iniciando WhatsApp... esperando QR (puede tardar ~30 segundos)')
+
+      // Polling continuo cada 3s hasta detectar "iniciando" o "conectado"
+      // Puppeteer tarda 15-30s en arrancar y generar el QR
+      let intentos = 0
+      const MAX_INTENTOS = 40 // 40 × 3s = 2 minutos máximo
+      waitStatusPollRef.current = setInterval(async () => {
+        intentos++
+        const st = await fetchWaStatus()
+        const stNorm = typeof st === 'string' ? st
+          : typeof st === 'boolean' ? (st ? 'conectado' : null)
+          : st?.valor || st?.estado || null
+
+        if (stNorm === 'iniciando' || stNorm === 'conectado' || intentos >= MAX_INTENTOS) {
+          clearInterval(waitStatusPollRef.current)
+          waitStatusPollRef.current = null
+          if (stNorm === 'iniciando') fetchWaQr()
+          if (stNorm === 'conectado') fetchWaNumero()
+        }
+      }, 3000)
+    } catch (err) {
       message.error('Error al iniciar WhatsApp')
     } finally {
       setWaLoading(false)
+    }
+  }
+
+  // Autodispara la conexión al cargar si no hay sesión activa
+  useEffect(() => {
+    if (!isConnected && !waLoading && !autoConnectRef.current) {
+      autoConnectRef.current = true
+      handleConectar()
+    }
+  }, [isConnected, waLoading])
+
+  const handleCerrarSesion = () => {
+    Modal.confirm({
+      title: 'Cerrar sesión de WhatsApp',
+      content: 'Esto desconectará el cliente actual y requerirá escanear un nuevo QR.',
+      okText: 'Cerrar sesión',
+      cancelText: 'Cancelar',
+      centered: true,
+      onOk: async () => {
+        setWaClosing(true)
+        try {
+          await api.post('/WhatsApp/cerrar-sesion', { Numero: waNumero })
+          message.success('Sesión cerrada')
+          setWaQr(null)
+          await Promise.all([fetchWaStatus(), fetchWaNumero()])
+        } catch {
+          message.error('Error al cerrar sesión')
+        } finally {
+          setWaClosing(false)
+        }
+      }
+    })
+  }
+
+  const handleRefreshQr = async () => {
+    setQrLoading(true)
+    try {
+      await fetchWaQr()
+      message.success('QR actualizado')
+    } catch {
+      message.error('No se pudo obtener el QR')
+    } finally {
+      setQrLoading(false)
     }
   }
 
@@ -268,9 +381,6 @@ export default function Configuracion() {
     }
   }
 
-  const isConnected = waStatus === 'conectado' || waStatus === true || waStatus?.estado === 'conectado'
-  const isStarting = waStatus === 'iniciando' || waStatus?.estado === 'iniciando'
-
   const userColumns = [
     { title: 'Usuario', key: 'usuario', render: (_, r) => r.nombreUsuario || r.NombreUsuario || '-' },
     { title: 'Nombre', key: 'nombre', render: (_, r) => `${r.nombres || r.Nombres || ''} ${r.apellidoPaterno || r.ApellidoPaterno || ''}`.trim() || '-' },
@@ -303,7 +413,10 @@ export default function Configuracion() {
 
   return (
     <div>
-      <Title level={4} style={{ marginBottom: 20 }}>Configuración</Title>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20 }}>
+        <Title level={4} style={{ margin: 0, flex: 1 }}>Configuración</Title>
+        {limpiarYReiniciarNodeBtn}
+      </div>
 
       <Tabs
         items={[
@@ -330,13 +443,13 @@ export default function Configuracion() {
                       </div>
                     )}
 
-                    <Space>
+                    <Space wrap>
                       <Button
                         type="primary"
                         icon={<WifiOutlined />}
                         onClick={handleConectar}
                         loading={waLoading || isStarting}
-                        disabled={isConnected}
+                        disabled={isConnected || waClosing}
                       >
                         {isConnected ? 'Conectado' : 'Conectar WhatsApp'}
                       </Button>
@@ -349,19 +462,77 @@ export default function Configuracion() {
                       >
                         Actualizar estado
                       </Button>
+                      <Button
+                        icon={<QrcodeOutlined />}
+                        onClick={handleRefreshQr}
+                        disabled={isConnected}
+                        loading={qrLoading}
+                      >
+                        Obtener QR
+                      </Button>
+                      <Button
+                        danger
+                        icon={<DisconnectOutlined />}
+                        onClick={handleCerrarSesion}
+                        disabled={waClosing || (!isConnected && !waNumero)}
+                        loading={waClosing}
+                      >
+                        Cerrar sesión
+                      </Button>
+                      <Button
+                        danger
+                        style={{ marginLeft: 8 }}
+                        onClick={async () => {
+                          let result = ''
+                          try {
+                            const resp = await api.post('/WhatsApp/cerrar-sesion', { numero: waNumero })
+                            result = `Status: ${resp.status}\n${JSON.stringify(resp.data, null, 2)}`
+                            await fetchWaStatus()
+                            await fetchWaQr()
+                          } catch (err) {
+                            result = err?.response ? `Status: ${err.response.status}\n${JSON.stringify(err.response.data, null, 2)}` : String(err)
+                          }
+                          Modal.info({
+                            title: 'Resultado cerrar-sesion',
+                            content: <pre style={{ whiteSpace: 'pre-wrap' }}>{result}</pre>,
+                            width: 600
+                          })
+                        }}
+                      >
+                        Forzar cerrar sesión
+                      </Button>
+                      <Button
+                        style={{ marginLeft: 8 }}
+                        onClick={async () => {
+                          let result = ''
+                          try {
+                            const resp = await api.post('/WhatsApp/iniciar-cliente')
+                            result = `Status: ${resp.status}\n${JSON.stringify(resp.data, null, 2)}`
+                          } catch (err) {
+                            result = err?.response ? `Status: ${err.response.status}\n${JSON.stringify(err.response.data, null, 2)}` : String(err)
+                          }
+                          Modal.info({
+                            title: 'Resultado iniciar-cliente',
+                            content: <pre style={{ whiteSpace: 'pre-wrap' }}>{result}</pre>,
+                            width: 600
+                          })
+                        }}
+                      >
+                        Test iniciar-cliente
+                      </Button>
                     </Space>
                   </Col>
-                  {isStarting && waQr && (
+                  {waQr && (
                     <Col xs={24} md={12}>
                       <div style={{ textAlign: 'center' }}>
                         <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
                           Escanea este código QR con tu WhatsApp
                         </Text>
-                        {waQr.startsWith('data:') ? (
+                        {typeof waQr === 'string' && waQr.startsWith('data:') ? (
                           <img src={waQr} alt="QR WhatsApp" style={{ maxWidth: 240, border: '1px solid #f0f0f0', borderRadius: 8 }} />
                         ) : (
                           <div style={{ padding: 20, background: '#f5f5f5', borderRadius: 8 }}>
-                            <Text code style={{ wordBreak: 'break-all', fontSize: 10 }}>{waQr}</Text>
+                            <Text code style={{ wordBreak: 'break-all', fontSize: 10 }}>{waQr || 'QR no disponible'}</Text>
                           </div>
                         )}
                       </div>

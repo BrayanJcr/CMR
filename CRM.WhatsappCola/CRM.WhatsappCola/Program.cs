@@ -1,8 +1,10 @@
 using CRM.WhatsappCola.DTOs.Base;
+using CRM.WhatsappCola.Hubs;
 using CRM.WhatsappCola.Models;
 using CRM.WhatsappCola.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -37,17 +39,20 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddControllers();
+builder.Services.AddSignalR();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("UI-Angular", builder =>
     {
-        builder.WithOrigins("http://localhost:4200")
-                    .WithOrigins("http://localhost:3000")
-                    .WithOrigins("http://localhost:3001")
-                    .WithOrigins("https://dev.ui.crm.clinicacayetanoheredia.com")
-                    .WithOrigins("https://uat.ui.crm.clinicacayetanoheredia.com")
+        builder.WithOrigins(
+                    "http://localhost:4200",
+                    "http://localhost:3000",
+                    "http://localhost:3001",
+                    "https://dev.ui.crm.clinicacayetanoheredia.com",
+                    "https://uat.ui.crm.clinicacayetanoheredia.com")
                     .AllowAnyHeader()
-                    .AllowAnyMethod();
+                    .AllowAnyMethod()
+                    .AllowCredentials();  // requerido por SignalR WebSocket
     });
 });
 
@@ -74,6 +79,10 @@ builder.Services.AddDbContext<WA_ColaContext>(options =>
 
 var app = builder.Build();
 
+// Inicializar HubContextHolder con los contextos del contenedor DI
+HubContextHolder.ChatContext = app.Services.GetRequiredService<IHubContext<ChatHub>>();
+HubContextHolder.QrContext   = app.Services.GetRequiredService<IHubContext<QrHub>>();
+
 // Configure the HTTP request pipeline.
 //if (app.Environment.IsDevelopment())
 //{
@@ -94,5 +103,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<ChatHub>("/hub-chat");
+app.MapHub<QrHub>("/hub-qr");
 
 app.Run();

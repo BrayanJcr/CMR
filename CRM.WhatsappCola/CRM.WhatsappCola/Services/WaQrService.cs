@@ -1,6 +1,7 @@
 ﻿using CRM.WhatsappCola.DTOs;
 using CRM.WhatsappCola.Helper;
 using Newtonsoft.Json;
+using System;
 using System.Net;
 
 namespace CRM.WhatsappCola.Services
@@ -189,6 +190,58 @@ namespace CRM.WhatsappCola.Services
                 {
                     Estado = false,
                     Mensage = $"{ex.Message} - {errorApi}"
+                };
+            }
+
+            return respuesta;
+        }
+
+        public WARespuestaDTO CerrarSesion(string numero)
+        {
+            WARespuestaDTO respuesta = new WARespuestaDTO();
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(numero))
+                {
+                    throw new ArgumentException("El número es obligatorio para cerrar sesión");
+                }
+
+                string encoded = Uri.EscapeDataString(numero);
+                string url = $"{_baseUrl}/logout?phoneNumber={encoded}";
+                GenerarHeaders();
+                var response = _webclient.DownloadString(url);
+                var dto = JsonConvert.DeserializeObject<WARespuestaDTO>(response);
+
+                respuesta = dto;
+            }
+            catch (WebException ex)
+            {
+                string errorApi = "";
+
+                if (ex.Status == WebExceptionStatus.ProtocolError)
+                {
+                    errorApi += ((HttpWebResponse)ex.Response).StatusCode + " - ";
+                    errorApi += ((HttpWebResponse)ex.Response).StatusDescription + " - ";
+                    using (Stream data = ex.Response.GetResponseStream())
+                    using (var reader = new StreamReader(data))
+                    {
+                        errorApi = reader.ReadToEnd();
+                    }
+                }
+
+                respuesta = new WARespuestaDTO()
+                {
+                    Estado = false,
+                    Mensage = $"{ex.Message} - {errorApi}"
+                };
+            }
+            catch (Exception ex)
+            {
+                respuesta = new WARespuestaDTO()
+                {
+                    Estado = false,
+                    Mensage = ex.Message
                 };
             }
 

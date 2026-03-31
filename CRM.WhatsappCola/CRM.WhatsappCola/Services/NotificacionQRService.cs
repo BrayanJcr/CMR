@@ -1,57 +1,28 @@
-﻿using Newtonsoft.Json;
-using Microsoft.AspNetCore.SignalR.Client;
 using CRM.WhatsappCola.DTOs.Notificacion;
 using CRM.WhatsappCola.DTOs.WaEntrante;
+using CRM.WhatsappCola.Hubs;
+using Microsoft.AspNetCore.SignalR;
+using Newtonsoft.Json;
 
 namespace CRM.WhatsappCola.Services
 {
     public class NotificacionQRService
     {
-        private bool EnvioNotificacion(string evento, object payload)
+        public bool EnviarNotificacion_RecepcionQR(WaMensajeQrEntranteDTO qrDto, string qrImageBase64 = null)
         {
             try
             {
-                HubConnection connection = new HubConnectionBuilder()
-                ////.WithUrl("https://localhost:44396/hub-qr", (opts) =>
-                .WithUrl("https://dev.sr.crm.clinicacayetanoheredia.com/hub-qr", (opts) =>
-                {
-                    opts.HttpMessageHandlerFactory = (message) =>
-                        {
-                            if (message is HttpClientHandler clientHandler)
-                                // always verify the SSL certificate
-                                clientHandler.ServerCertificateCustomValidationCallback +=
-                                    (sender, certificate, chain, sslPolicyErrors) => { return true; };
-                            return message;
-                        };
-                })
-                    .Build();
-
-                connection.StartAsync().Wait();
-                connection.InvokeAsync(evento, JsonConvert.SerializeObject(payload)).Wait();
-                connection.DisposeAsync();
-                return true;
-            }
-            catch (Exception ex)
-            {
-                throw ex;
-            }
-        }
-
-        public bool EnviarNotificacion_RecepcionQR(WaMensajeQrEntranteDTO qrDto, string payload)
-        {
-            try
-            {
-                NotificacionWaQrDTO notificacion = new NotificacionWaQrDTO()
+                var notificacion = new NotificacionWaQrDTO()
                 {
                     CodigoQr = qrDto.QrCode,
-                    Payload = payload
+                    Payload = qrImageBase64
                 };
-
-                var respuesta = EnvioNotificacion("NotificarQr", notificacion);
-
-                return respuesta;
+                HubContextHolder.QrContext?.Clients.All
+                    .SendAsync("NuevoQr", JsonConvert.SerializeObject(notificacion))
+                    .Wait();
+                return true;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return false;
             }
@@ -61,17 +32,17 @@ namespace CRM.WhatsappCola.Services
         {
             try
             {
-                NotificacionWaNumeroDTO notificacion = new NotificacionWaNumeroDTO()
+                var notificacion = new NotificacionWaNumeroDTO()
                 {
                     NumeroCuenta = numeroDto.NumeroDesde,
                     Payload = payload
                 };
-
-                var respuesta = EnvioNotificacion("NotificarNumero", notificacion);
-
-                return respuesta;
+                HubContextHolder.QrContext?.Clients.All
+                    .SendAsync("NuevoNumero", JsonConvert.SerializeObject(notificacion))
+                    .Wait();
+                return true;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return false;
             }

@@ -10,6 +10,7 @@ namespace CRM.WhatsappCola.Services
 {
     public class WaQrRecepcionService
     {
+        private const string ConfigUsuario = "wa-recepcion";
         private WA_ColaContext _db;
 
         public WaQrRecepcionService(WA_ColaContext db)
@@ -229,8 +230,23 @@ namespace CRM.WhatsappCola.Services
 
             try
             {
+                var qrImageBase64 = GenerarCodigoQRBase64(qrDto.QrCode);
+                if (!string.IsNullOrWhiteSpace(qrImageBase64))
+                {
+                    var dataUri = $"data:image/png;base64,{qrImageBase64}";
+                    GuardarConfiguracion("whatsapp_qr", dataUri);
+                }
+                else
+                {
+                    // Guardar el código QR en texto plano si no se pudo generar imagen
+                    GuardarConfiguracion("whatsapp_qr", qrDto.QrCode ?? string.Empty);
+                }
+
+                // Siempre marcar como iniciando para que el frontend haga polling
+                GuardarConfiguracion("whatsapp_estado", "iniciando");
+
                 //envio notificacion signal
-                bool resultadoNotificacion = EnviarNotificacion_RecepcionQR(qrDto);
+                bool resultadoNotificacion = EnviarNotificacion_RecepcionQR(qrDto, qrImageBase64);
             }
             catch (Exception ex)
             {
@@ -255,6 +271,11 @@ namespace CRM.WhatsappCola.Services
 
             try
             {
+                GuardarConfiguracion("whatsapp_estado", "conectado");
+                GuardarConfiguracion("whatsapp_qr", string.Empty);
+                if (!string.IsNullOrWhiteSpace(numeroDto.NumeroDesde))
+                    GuardarConfiguracion("whatsapp_numero", numeroDto.NumeroDesde);
+
                 bool resultadoNotificacion = EnviarNotificacion_RecepcionNumero(numeroDto);
             }
             catch (Exception ex)
@@ -273,30 +294,35 @@ namespace CRM.WhatsappCola.Services
         private string GenerarCodigoQRBase64(string qrCodeText)
         {
             string response = null;
-            try
+            // Intentar con nivel L (mayor capacidad de datos) primero
+            foreach (var nivel in new[] { QRCodeGenerator.ECCLevel.L, QRCodeGenerator.ECCLevel.M, QRCodeGenerator.ECCLevel.Q })
             {
-                QRCodeGenerator qrGenerator = new QRCodeGenerator();
-                QRCodeData qrCodeData = qrGenerator.CreateQrCode(qrCodeText, QRCodeGenerator.ECCLevel.Q);
-                PngByteQRCode qrCode = new PngByteQRCode(qrCodeData);
-                byte[] qrCodeImage = qrCode.GetGraphic(20);
-                var base64 = Convert.ToBase64String(qrCodeImage);
-                response = base64;
-            }
-            catch (Exception ex)
-            {
+                try
+                {
+                    QRCodeGenerator qrGenerator = new QRCodeGenerator();
+                    QRCodeData qrCodeData = qrGenerator.CreateQrCode(qrCodeText, nivel);
+                    PngByteQRCode qrCode = new PngByteQRCode(qrCodeData);
+                    byte[] qrCodeImage = qrCode.GetGraphic(20);
+                    response = Convert.ToBase64String(qrCodeImage);
+                    break;
+                }
+                catch
+                {
+                    // Intentar con siguiente nivel
+                }
             }
             return response;
         }
 
         #region Notificaciones
 
-        private bool EnviarNotificacion_RecepcionQR(WaMensajeQrEntranteDTO qrDto)
+        private bool EnviarNotificacion_RecepcionQR(WaMensajeQrEntranteDTO qrDto, string qrImageBase64 = null)
         {
             try
             {
                 NotificacionQRService servicioNotificacion = new NotificacionQRService();
                 string payload = JsonConvert.SerializeObject(
-                    new { QrCodeBase64 = GenerarCodigoQRBase64(qrDto.QrCode) }
+                    new { QrCodeBase64 = qrImageBase64 ?? GenerarCodigoQRBase64(qrDto.QrCode) }
                     );
                 bool resultado = servicioNotificacion.EnviarNotificacion_RecepcionQR(qrDto, payload);
                 return resultado;
@@ -305,6 +331,34 @@ namespace CRM.WhatsappCola.Services
             {
                 return false;
             }
+        }
+
+        private void GuardarConfiguracion(string clave, string valor)
+        {
+            if (string.IsNullOrWhiteSpace(clave)) return;
+
+            var config = _db.TConfiguracionSistema.FirstOrDefault(c => c.Clave == clave);
+            if (config == null)
+            {
+                config = new TConfiguracionSistema
+                {
+                    Clave = clave,
+                    Tipo = "string",
+                    Descripcion = null,
+                    UsuarioModificacion = ConfigUsuario,
+                    FechaModificacion = DateTime.Now,
+                    Valor = valor
+                };
+                _db.TConfiguracionSistema.Add(config);
+            }
+            else
+            {
+                config.Valor = valor;
+                config.UsuarioModificacion = ConfigUsuario;
+                config.FechaModificacion = DateTime.Now;
+            }
+
+            _db.SaveChanges();
         }
 
         private bool EnviarNotificacionMensaje_General(string numeroCuenta, string numeroCliente, bool esEntrante)

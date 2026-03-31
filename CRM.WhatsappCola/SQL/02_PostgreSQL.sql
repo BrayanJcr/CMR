@@ -16,7 +16,7 @@
 -- Para activar PostgreSQL en el backend editar appsettings.json:
 --   "DatabaseProvider": "PostgreSQL"
 --   "ConnectionStrings": {
---     "PostgreSQL": "Host=localhost;Port=5432;Database=wa_cola;Username=postgres;Password=postgres;"
+--     "PostgreSQL": "Host=localhost;Port=5432;Database=WA_Cola;Username=postgres;Password=123;Pooling=true;Connection Lifetime=0;"
 --   }
 -- ============================================================
 
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS "T_MensajeCola" (
     "Mensaje"              TEXT          NULL,
     "AdjuntoBase64"        TEXT          NULL,
     "NombreArchivo"        VARCHAR(1024) NULL,
-    "MimeType"             VARCHAR(50)   NULL,
+    "MimeType"             VARCHAR(255)  NULL,
     "NroByte"              INTEGER       NULL,
     "UrlArchivo"           TEXT          NULL,
     "Estado"               BOOLEAN       NOT NULL DEFAULT TRUE,
@@ -99,7 +99,8 @@ CREATE TABLE IF NOT EXISTS "T_MensajeCola" (
     "FechaModificacion"    TIMESTAMP     NOT NULL DEFAULT NOW(),
     "Error"                TEXT          NULL,
     "FechaEnvio"           TIMESTAMP     NULL,
-    "WhatsAppId"           VARCHAR(50)   NULL
+    "WhatsAppId"           VARCHAR(50)   NULL,
+    "AckEstado"            INTEGER       NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS "T_MensajeEntrante" (
@@ -130,70 +131,6 @@ CREATE TABLE IF NOT EXISTS "T_MensajeEntrante" (
     "EsErrorDescargaMultimedia"   BOOLEAN       NULL,
     "NombreContacto"              VARCHAR(256)  NULL
 );
-
--- ============================================================
--- VISTAS ORIGINALES
--- ============================================================
-
-CREATE OR REPLACE VIEW "V_Obtener_DetalleMensajes" AS
-SELECT
-    mc."Id"              AS "IdMensajeSaliente",
-    NULL::INTEGER        AS "IdMensajeEntrante",
-    mc."NumeroRemitente" AS "NumeroCuenta",
-    mc."NumeroDestino"   AS "NumeroCliente",
-    CAST(mc."FechaCreacion" AS DATE) AS "Fecha",
-    mc."FechaEnvio",
-    mc."WhatsAppId",
-    mc."Mensaje",
-    NULL::VARCHAR        AS "WhatsAppIdPadre",
-    NULL::INTEGER        AS "IdMensajeSalientePadre",
-    NULL::INTEGER        AS "IdMensajeEntrantePadre",
-    mc."Error",
-    mc."MimeType",
-    mc."AdjuntoBase64",
-    CAST(mc."NombreArchivo" AS VARCHAR(500)) AS "NombreArchivo",
-    NULL::BOOLEAN        AS "EsErrorDescargaMultimedia"
-FROM "T_MensajeCola" mc
-WHERE mc."Estado" = TRUE
-UNION ALL
-SELECT
-    NULL::INTEGER        AS "IdMensajeSaliente",
-    me."Id"              AS "IdMensajeEntrante",
-    me."NumeroCuenta",
-    me."NumeroCliente",
-    CAST(me."FechaEnvio" AS DATE) AS "Fecha",
-    me."FechaEnvio",
-    me."WhatsAppId",
-    me."Mensaje",
-    me."WhatsAppIdPadre",
-    me."IdMensajeColaPadre"       AS "IdMensajeSalientePadre",
-    me."IdMensajeEntrantePadre",
-    NULL::TEXT           AS "Error",
-    me."MimeType",
-    me."AdjuntoBase64",
-    CAST(me."NombreArchivo" AS VARCHAR(500)) AS "NombreArchivo",
-    me."EsErrorDescargaMultimedia"
-FROM "T_MensajeEntrante" me
-WHERE me."Estado" = TRUE;
-
-CREATE OR REPLACE VIEW "V_Obtener_ResumenConversacion" AS
-SELECT
-    me."NumeroCuenta",
-    me."NumeroCliente",
-    MAX(me."FechaEnvio") AS "FechaUltimoMensaje",
-    COALESCE(
-        (SELECT me2."NombreContacto"
-         FROM "T_MensajeEntrante" me2
-         WHERE me2."NumeroCuenta"    = me."NumeroCuenta"
-           AND me2."NumeroCliente"   = me."NumeroCliente"
-           AND me2."NombreContacto"  IS NOT NULL
-           AND me2."Estado"          = TRUE
-         ORDER BY me2."FechaEnvio" DESC LIMIT 1),
-        me."NumeroCliente"
-    ) AS "NombreContacto"
-FROM "T_MensajeEntrante" me
-WHERE me."Estado" = TRUE
-GROUP BY me."NumeroCuenta", me."NumeroCliente";
 
 -- ============================================================
 -- PARTE 2: TABLAS CRM
@@ -482,13 +419,13 @@ BEGIN
   END IF;
 END $$;
 
--- Contraseña: Admin123!
+/* -- Contraseña: Admin123!
 INSERT INTO "T_Usuario" ("Nombres","ApellidoPaterno","ApellidoMaterno","NombreUsuario","ClaveHash","Rol","Estado","UsuarioCreacion","UsuarioModificacion","FechaCreacion","FechaModificacion")
 VALUES ('Administrador','Sistema','CRM','admin',
         '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
         'admin', TRUE, 'sistema', 'sistema', NOW(), NOW())
 ON CONFLICT ("NombreUsuario") DO NOTHING;
-
+ */
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM "T_PipelineEtapa") THEN
@@ -514,6 +451,63 @@ INSERT INTO "T_ConfiguracionSistema" ("Clave","Valor","Tipo","Descripcion","Usua
 ON CONFLICT ("Clave") DO NOTHING;
 
 -- ============================================================
+-- PARTE 4: ACK, REACCIONES Y EVENTOS DE GRUPO
+-- ============================================================
+
+-- AckEstado en bases existentes (0=pendiente,1=enviado_servidor,2=entregado,3=leído,4=reproducido)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'T_MensajeCola' AND column_name = 'AckEstado'
+    ) THEN
+        ALTER TABLE "T_MensajeCola" ADD COLUMN "AckEstado" INTEGER NOT NULL DEFAULT 0;
+        RAISE NOTICE 'Columna AckEstado agregada a T_MensajeCola.';
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS "T_MensajeReaccion" (
+    "Id"            SERIAL        NOT NULL CONSTRAINT "PK_T_MensajeReaccion" PRIMARY KEY,
+    "WhatsAppId"    VARCHAR(50)   NOT NULL,
+    "Emoji"         VARCHAR(10)   NOT NULL,
+    "SenderId"      VARCHAR(30)   NOT NULL,
+    "FechaReaccion" TIMESTAMP     NOT NULL,
+    "Estado"        BOOLEAN       NOT NULL DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS "T_GrupoEvento" (
+    "Id"          SERIAL        NOT NULL CONSTRAINT "PK_T_GrupoEvento" PRIMARY KEY,
+    "ChatId"      VARCHAR(50)   NOT NULL,
+    "Tipo"        VARCHAR(30)   NOT NULL,
+    "Author"      VARCHAR(30)   NOT NULL,
+    "Recipients"  TEXT          NULL,
+    "FechaEvento" TIMESTAMP     NOT NULL,
+    "Estado"      BOOLEAN       NOT NULL DEFAULT TRUE
+);
+
+-- MimeType VARCHAR(255) en bases existentes (era VARCHAR(50), insuficiente para MIME types de Office como .docx/.xlsx)
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'T_MensajeCola' AND column_name = 'MimeType'
+          AND character_maximum_length < 255
+    ) THEN
+        ALTER TABLE "T_MensajeCola" ALTER COLUMN "MimeType" TYPE VARCHAR(255);
+        RAISE NOTICE 'Columna MimeType en T_MensajeCola ampliada a VARCHAR(255).';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'T_MensajeEntrante' AND column_name = 'MimeType'
+          AND character_maximum_length < 255
+    ) THEN
+        ALTER TABLE "T_MensajeEntrante" ALTER COLUMN "MimeType" TYPE VARCHAR(255);
+        RAISE NOTICE 'Columna MimeType en T_MensajeEntrante ampliada a VARCHAR(255).';
+    END IF;
+END $$;
+
+-- ============================================================
 -- VERIFICACIÓN
 -- ============================================================
 SELECT table_name AS "Tabla", COUNT(column_name) AS "Columnas"
@@ -530,3 +524,70 @@ SELECT 'T_PipelineEtapa',                    COUNT(*) FROM "T_PipelineEtapa"    
 SELECT 'T_ConfiguracionSistema',             COUNT(*) FROM "T_ConfiguracionSistema";
 
 -- Script completado. Base de datos wa_cola (PostgreSQL) lista.
+
+
+-- ============================================================
+-- VISTAS ORIGINALES
+-- ============================================================
+
+CREATE OR REPLACE VIEW "V_Obtener_DetalleMensajes" AS
+SELECT
+    mc."Id"              AS "IdMensajeSaliente",
+    NULL::INTEGER        AS "IdMensajeEntrante",
+    mc."NumeroRemitente" AS "NumeroCuenta",
+    mc."NumeroDestino"   AS "NumeroCliente",
+    CAST(mc."FechaCreacion" AS DATE) AS "Fecha",
+    mc."FechaEnvio",
+    mc."WhatsAppId",
+    mc."Mensaje",
+    NULL::VARCHAR        AS "WhatsAppIdPadre",
+    NULL::INTEGER        AS "IdMensajeSalientePadre",
+    NULL::INTEGER        AS "IdMensajeEntrantePadre",
+    mc."Error",
+    mc."MimeType",
+    mc."AdjuntoBase64",
+    CAST(mc."NombreArchivo" AS VARCHAR(500)) AS "NombreArchivo",
+    NULL::BOOLEAN        AS "EsErrorDescargaMultimedia",
+    mc."AckEstado"
+FROM "T_MensajeCola" mc
+WHERE mc."Estado" = TRUE
+UNION ALL
+SELECT
+    NULL::INTEGER        AS "IdMensajeSaliente",
+    me."Id"              AS "IdMensajeEntrante",
+    me."NumeroCuenta",
+    me."NumeroCliente",
+    CAST(me."FechaEnvio" AS DATE) AS "Fecha",
+    me."FechaEnvio",
+    me."WhatsAppId",
+    me."Mensaje",
+    me."WhatsAppIdPadre",
+    me."IdMensajeColaPadre"       AS "IdMensajeSalientePadre",
+    me."IdMensajeEntrantePadre",
+    NULL::TEXT           AS "Error",
+    me."MimeType",
+    me."AdjuntoBase64",
+    CAST(me."NombreArchivo" AS VARCHAR(500)) AS "NombreArchivo",
+    me."EsErrorDescargaMultimedia",
+    NULL::INTEGER        AS "AckEstado"
+FROM "T_MensajeEntrante" me
+WHERE me."Estado" = TRUE;
+
+CREATE OR REPLACE VIEW "V_Obtener_ResumenConversacion" AS
+SELECT
+    me."NumeroCuenta",
+    me."NumeroCliente",
+    MAX(me."FechaEnvio") AS "FechaUltimoMensaje",
+    COALESCE(
+        (SELECT me2."NombreContacto"
+         FROM "T_MensajeEntrante" me2
+         WHERE me2."NumeroCuenta"    = me."NumeroCuenta"
+           AND me2."NumeroCliente"   = me."NumeroCliente"
+           AND me2."NombreContacto"  IS NOT NULL
+           AND me2."Estado"          = TRUE
+         ORDER BY me2."FechaEnvio" DESC LIMIT 1),
+        me."NumeroCliente"
+    ) AS "NombreContacto"
+FROM "T_MensajeEntrante" me
+WHERE me."Estado" = TRUE
+GROUP BY me."NumeroCuenta", me."NumeroCliente";

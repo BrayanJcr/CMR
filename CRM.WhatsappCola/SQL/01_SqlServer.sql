@@ -132,7 +132,7 @@ BEGIN
         Mensaje              NVARCHAR(MAX) NULL,
         AdjuntoBase64        NVARCHAR(MAX) NULL,
         NombreArchivo        NVARCHAR(1024) NULL,
-        MimeType             VARCHAR(50)   NULL,
+        MimeType             VARCHAR(255)  NULL,
         NroByte              INT           NULL,
         UrlArchivo           NVARCHAR(MAX) NULL,
         Estado               BIT           NOT NULL DEFAULT 1,
@@ -143,6 +143,7 @@ BEGIN
         Error                NVARCHAR(MAX) NULL,
         FechaEnvio           DATETIME      NULL,
         WhatsAppId           VARCHAR(50)   NULL,
+        AckEstado            INT           NOT NULL DEFAULT 0,
         CONSTRAINT FK_T_MensajeCola_T_MensajeColaEstado
             FOREIGN KEY (IdMensajeColaEstado) REFERENCES T_MensajeColaEstado(Id)
     );
@@ -210,7 +211,8 @@ SELECT
     mc.MimeType,
     mc.AdjuntoBase64,
     CAST(mc.NombreArchivo AS NVARCHAR(500)) AS NombreArchivo,
-    NULL               AS EsErrorDescargaMultimedia
+    NULL               AS EsErrorDescargaMultimedia,
+    mc.AckEstado
 FROM T_MensajeCola mc
 WHERE mc.Estado = 1
 UNION ALL
@@ -230,7 +232,8 @@ SELECT
     me.MimeType,
     me.AdjuntoBase64,
     CAST(me.NombreArchivo AS NVARCHAR(500)) AS NombreArchivo,
-    me.EsErrorDescargaMultimedia
+    me.EsErrorDescargaMultimedia,
+    NULL               AS AckEstado
 FROM T_MensajeEntrante me
 WHERE me.Estado = 1;
 GO
@@ -667,6 +670,70 @@ BEGIN
     ('mensaje_bienvenida',    'Hola! Gracias por contactarnos. En que podemos ayudarte?',  'string', 'Mensaje de bienvenida',       'sistema', GETDATE()),
     ('mensaje_fuera_horario', 'Estamos fuera de horario. Te responderemos pronto.',        'string', 'Mensaje fuera de horario',    'sistema', GETDATE());
     PRINT 'Seed T_ConfiguracionSistema insertado.';
+END
+GO
+
+-- ============================================================
+-- PARTE 4: ACK, REACCIONES Y EVENTOS DE GRUPO
+-- ============================================================
+
+-- AckEstado en bases existentes (0=pendiente,1=enviado_servidor,2=entregado,3=leído,4=reproducido)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('T_MensajeCola') AND name = 'AckEstado')
+BEGIN
+    ALTER TABLE [T_MensajeCola] ADD [AckEstado] INT NOT NULL DEFAULT 0;
+    PRINT 'Columna AckEstado agregada a T_MensajeCola.';
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'T_MensajeReaccion')
+BEGIN
+    CREATE TABLE [T_MensajeReaccion] (
+        [Id]            INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_T_MensajeReaccion PRIMARY KEY,
+        [WhatsAppId]    VARCHAR(50)   NOT NULL,
+        [Emoji]         NVARCHAR(10)  NOT NULL,
+        [SenderId]      VARCHAR(30)   NOT NULL,
+        [FechaReaccion] DATETIME      NOT NULL,
+        [Estado]        BIT           NOT NULL DEFAULT 1
+    );
+    PRINT 'Tabla T_MensajeReaccion creada.';
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'T_GrupoEvento')
+BEGIN
+    CREATE TABLE [T_GrupoEvento] (
+        [Id]          INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_T_GrupoEvento PRIMARY KEY,
+        [ChatId]      VARCHAR(50)   NOT NULL,
+        [Tipo]        VARCHAR(30)   NOT NULL,
+        [Author]      VARCHAR(30)   NOT NULL,
+        [Recipients]  NVARCHAR(MAX) NULL,
+        [FechaEvento] DATETIME      NOT NULL,
+        [Estado]      BIT           NOT NULL DEFAULT 1
+    );
+    PRINT 'Tabla T_GrupoEvento creada.';
+END
+GO
+
+-- MimeType VARCHAR(255) en bases existentes (era VARCHAR(50), insuficiente para MIME types de Office como .docx/.xlsx)
+IF EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE object_id = OBJECT_ID('T_MensajeCola') AND name = 'MimeType'
+      AND max_length < 255
+)
+BEGIN
+    ALTER TABLE [T_MensajeCola] ALTER COLUMN [MimeType] VARCHAR(255) NULL;
+    PRINT 'Columna MimeType en T_MensajeCola ampliada a VARCHAR(255).';
+END
+GO
+
+IF EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE object_id = OBJECT_ID('T_MensajeEntrante') AND name = 'MimeType'
+      AND max_length < 255
+)
+BEGIN
+    ALTER TABLE [T_MensajeEntrante] ALTER COLUMN [MimeType] VARCHAR(255) NULL;
+    PRINT 'Columna MimeType en T_MensajeEntrante ampliada a VARCHAR(255).';
 END
 GO
 

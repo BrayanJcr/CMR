@@ -9,5 +9,20 @@ namespace CRM.WhatsappCola.Hubs
         {
             await Clients.Others.SendAsync("NuevoMensaje", payload);
         }
+
+        public async Task NotificarAckActualizado(string whatsAppId, int ackEstado)
+        {
+            await Clients.Others.SendAsync("AckActualizado", whatsAppId, ackEstado);
+        }
+
+        public async Task NotificarNuevaReaccion(string whatsAppId, string emoji, string senderId)
+        {
+            await Clients.Others.SendAsync("NuevaReaccion", whatsAppId, emoji, senderId);
+        }
+
+        public async Task NotificarLlamadaEntrante(string from, bool isVideo)
+        {
+            await Clients.Others.SendAsync("LlamadaEntrante", from, isVideo);
+        }
     }
 }

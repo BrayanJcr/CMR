@@ -31,6 +31,10 @@ public partial class WA_ColaContext : DbContext
 
     public virtual DbSet<VObtenerResumenConversacion> VObtenerResumenConversacion { get; set; }
 
+    public virtual DbSet<TMensajeReaccion> TMensajeReaccion { get; set; }
+
+    public virtual DbSet<TGrupoEvento> TGrupoEvento { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<TConversacion>(entity =>
@@ -41,10 +45,10 @@ public partial class WA_ColaContext : DbContext
             entity.Property(e => e.Estado).HasComment("Estado del elemento");
             entity.Property(e => e.FechaCreacion)
                 .HasComment("Fecha de creacion del registro")
-                .HasColumnType("datetime");
+                .HasColumnType("timestamp without time zone");
             entity.Property(e => e.FechaModificacion)
                 .HasComment("Fecha de modificacion del registro")
-                .HasColumnType("datetime");
+                .HasColumnType("timestamp without time zone");
             entity.Property(e => e.NumeroCliente)
                 .IsRequired()
                 .HasMaxLength(12)
@@ -77,17 +81,17 @@ public partial class WA_ColaContext : DbContext
             entity.Property(e => e.Estado).HasComment("Estado del elemento");
             entity.Property(e => e.FechaCreacion)
                 .HasComment("Fecha de creacion del registro")
-                .HasColumnType("datetime");
+                .HasColumnType("timestamp without time zone");
             entity.Property(e => e.FechaEnvio)
                 .HasComment("Fecha de envío del mensaje")
-                .HasColumnType("datetime");
+                .HasColumnType("timestamp without time zone");
             entity.Property(e => e.FechaModificacion)
                 .HasComment("Fecha de modificacion del registro")
-                .HasColumnType("datetime");
+                .HasColumnType("timestamp without time zone");
             entity.Property(e => e.IdMensajeColaEstado).HasComment("Id del estado del mensaje, Fk con la tabla T_MensajeColaEstado");
             entity.Property(e => e.Mensaje).HasComment("Texto del mensaje");
             entity.Property(e => e.MimeType)
-                .HasMaxLength(50)
+                .HasMaxLength(255)
                 .IsUnicode(false)
                 .HasComment("Mimetype del archivo adjunto");
             entity.Property(e => e.NombreArchivo)
@@ -121,6 +125,7 @@ public partial class WA_ColaContext : DbContext
                 .HasMaxLength(50)
                 .IsUnicode(false)
                 .HasComment("Identificador del mensaje en WhatsApp");
+            entity.Property(e => e.AckEstado).HasComment("Estado ACK del mensaje: 0=pendiente, 1=servidor, 2=entregado, 3=leído, 4=reproducido");
 
             entity.HasOne(d => d.IdMensajeColaEstadoNavigation).WithMany(p => p.TMensajeCola)
                 .HasForeignKey(d => d.IdMensajeColaEstado)
@@ -135,10 +140,10 @@ public partial class WA_ColaContext : DbContext
             entity.Property(e => e.Estado).HasComment("Estado del elemento");
             entity.Property(e => e.FechaCreacion)
                 .HasComment("Fecha de creacion del registro")
-                .HasColumnType("datetime");
+                .HasColumnType("timestamp without time zone");
             entity.Property(e => e.FechaModificacion)
                 .HasComment("Fecha de modificacion del registro")
-                .HasColumnType("datetime");
+                .HasColumnType("timestamp without time zone");
             entity.Property(e => e.Nombre)
                 .IsRequired()
                 .HasMaxLength(50)
@@ -166,23 +171,23 @@ public partial class WA_ColaContext : DbContext
             entity.Property(e => e.Estado).HasComment("Estado del elemento");
             entity.Property(e => e.FechaCreacion)
                 .HasComment("Fecha de creacion del registro")
-                .HasColumnType("datetime");
+                .HasColumnType("timestamp without time zone");
             entity.Property(e => e.FechaEnvio)
                 .HasComment("Fecha de envío del mensaje")
-                .HasColumnType("datetime");
+                .HasColumnType("timestamp without time zone");
             entity.Property(e => e.FechaModificacion)
                 .HasComment("Fecha de modificacion del registro")
-                .HasColumnType("datetime");
+                .HasColumnType("timestamp without time zone");
             entity.Property(e => e.FechaRecepcionEliminacion)
                 .HasComment("Fecha en la que se recibio el mensaje de eliminacion")
-                .HasColumnType("datetime");
+                .HasColumnType("timestamp without time zone");
             entity.Property(e => e.FueEliminado).HasComment("Indica si el mensaje fue eliminado");
             entity.Property(e => e.IdMensajeColaPadre).HasComment("Id del mensaje padre en la tabla T_MensajeCola");
             entity.Property(e => e.IdMensajeEntranteEstado).HasComment("Estado del mensaje, Fk con la tabla T_MensajeEntranteEstado");
             entity.Property(e => e.IdMensajeEntrantePadre).HasComment("Id del mensaje padre en la tabla T_MensajeEntrante");
             entity.Property(e => e.Mensaje).HasComment("Texto del mensaje");
             entity.Property(e => e.MimeType)
-                .HasMaxLength(50)
+                .HasMaxLength(255)
                 .IsUnicode(false)
                 .HasComment("Mimetype del archivo adjunto");
             entity.Property(e => e.NombreArchivo)
@@ -241,10 +246,10 @@ public partial class WA_ColaContext : DbContext
             entity.Property(e => e.Estado).HasComment("Estado del elemento");
             entity.Property(e => e.FechaCreacion)
                 .HasComment("Fecha de creacion del registro")
-                .HasColumnType("datetime");
+                .HasColumnType("timestamp without time zone");
             entity.Property(e => e.FechaModificacion)
                 .HasComment("Fecha de modificacion del registro")
-                .HasColumnType("datetime");
+                .HasColumnType("timestamp without time zone");
             entity.Property(e => e.Nombre)
                 .IsRequired()
                 .HasMaxLength(50)
@@ -269,10 +274,10 @@ public partial class WA_ColaContext : DbContext
             entity.Property(e => e.Estado).HasComment("Estado del elemento");
             entity.Property(e => e.FechaCreacion)
                 .HasComment("Fecha de creacion del registro")
-                .HasColumnType("datetime");
+                .HasColumnType("timestamp without time zone");
             entity.Property(e => e.FechaModificacion)
                 .HasComment("Fecha de modificacion del registro")
-                .HasColumnType("datetime");
+                .HasColumnType("timestamp without time zone");
             entity.Property(e => e.Nombre)
                 .IsRequired()
                 .HasMaxLength(50)
@@ -315,10 +320,10 @@ public partial class WA_ColaContext : DbContext
             entity.Property(e => e.Estado).HasComment("Estado del elemento");
             entity.Property(e => e.FechaCreacion)
                 .HasComment("Fecha de creacion del registro")
-                .HasColumnType("datetime");
+                .HasColumnType("timestamp without time zone");
             entity.Property(e => e.FechaModificacion)
                 .HasComment("Fecha de modificacion del registro")
-                .HasColumnType("datetime");
+                .HasColumnType("timestamp without time zone");
             entity.Property(e => e.NombreUsuario)
                 .IsRequired()
                 .HasMaxLength(50)
@@ -347,9 +352,9 @@ public partial class WA_ColaContext : DbContext
                 .HasNoKey()
                 .ToView("V_Obtener_DetalleMensajes");
 
-            entity.Property(e => e.FechaEnvio).HasColumnType("datetime");
+            entity.Property(e => e.FechaEnvio).HasColumnType("timestamp without time zone");
             entity.Property(e => e.MimeType)
-                .HasMaxLength(50)
+                .HasMaxLength(255)
                 .IsUnicode(false);
             entity.Property(e => e.NombreArchivo).HasMaxLength(500);
             entity.Property(e => e.NumeroCliente)
@@ -366,6 +371,7 @@ public partial class WA_ColaContext : DbContext
             entity.Property(e => e.WhatsAppIdPadre)
                 .HasMaxLength(50)
                 .IsUnicode(false);
+            entity.Property(e => e.AckEstado);
         });
 
         modelBuilder.Entity<VObtenerResumenConversacion>(entity =>
@@ -374,7 +380,7 @@ public partial class WA_ColaContext : DbContext
                 .HasNoKey()
                 .ToView("V_Obtener_ResumenConversacion");
 
-            entity.Property(e => e.FechaUltimoMensaje).HasColumnType("datetime");
+            entity.Property(e => e.FechaUltimoMensaje).HasColumnType("timestamp without time zone");
             entity.Property(e => e.NombreContacto)
                 .IsRequired()
                 .HasMaxLength(256)
@@ -387,6 +393,24 @@ public partial class WA_ColaContext : DbContext
                 .IsRequired()
                 .HasMaxLength(12)
                 .IsUnicode(false);
+        });
+
+        modelBuilder.Entity<TMensajeReaccion>(entity =>
+        {
+            entity.ToTable("T_MensajeReaccion");
+            entity.Property(e => e.FechaReaccion).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.WhatsAppId).IsRequired().HasMaxLength(50).IsUnicode(false);
+            entity.Property(e => e.Emoji).IsRequired().HasMaxLength(10);
+            entity.Property(e => e.SenderId).IsRequired().HasMaxLength(30).IsUnicode(false);
+        });
+
+        modelBuilder.Entity<TGrupoEvento>(entity =>
+        {
+            entity.ToTable("T_GrupoEvento");
+            entity.Property(e => e.FechaEvento).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.ChatId).IsRequired().HasMaxLength(50).IsUnicode(false);
+            entity.Property(e => e.Tipo).IsRequired().HasMaxLength(30).IsUnicode(false);
+            entity.Property(e => e.Author).IsRequired().HasMaxLength(30).IsUnicode(false);
         });
 
         OnModelCreatingPartial(modelBuilder);

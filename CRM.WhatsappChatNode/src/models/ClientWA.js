@@ -2,7 +2,7 @@ require('dotenv').config()
 
 // Activar debug interno de whatsapp-web.js
 process.env.DEBUG = 'whatsapp-web.js:*';
-const { Client, LocalAuth, MessageMedia, Buttons } = require('whatsapp-web.js');
+const { Client, LocalAuth, MessageMedia, Buttons, Location, Poll, List } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const axios = require('axios');
 const https = require('https')
@@ -133,6 +133,7 @@ class ClientWA {
                 whatsAppId: message.id.id,
                 // whatsAppIdPadre: message.hasQuotedMsg == true ? message.rawData.quotedMsg.id.id : null,
                 tieneAdjunto: message.hasMedia,
+                esGif: message.isGif || false,
                 // adjuntoBase64: message.rawData.body,
                 // nombreArchivo: message.rawData.filename,
                 // mimeType: message.rawData.mimetype,
@@ -250,6 +251,86 @@ class ClientWA {
             console.log(`[DEBUG] Client authenticated: ${this.numero}`, data);
         });
 
+        this.cliente.on('message_ack', async (msg, ack) => {
+            try {
+                await instanceAxios.post(process.env.URL_APP_Cola + '/api/RecepcionWa/recepcionar-ack', {
+                    whatsAppId: msg.id._serialized,
+                    ackEstado: ack
+                }, header);
+            } catch (e) {
+                console.error('[message_ack] error:', e.message);
+            }
+        });
+
+        this.cliente.on('message_reaction', async (reaction) => {
+            try {
+                await instanceAxios.post(process.env.URL_APP_Cola + '/api/RecepcionWa/recepcionar-reaccion', {
+                    whatsAppId: reaction.msgId._serialized,
+                    emoji: reaction.reaction,
+                    senderId: reaction.senderId._serialized || reaction.senderId,
+                    timestamp: reaction.timestamp
+                }, header);
+            } catch (e) {
+                console.error('[message_reaction] error:', e.message);
+            }
+        });
+
+        this.cliente.on('group_join', async (notification) => {
+            try {
+                await instanceAxios.post(process.env.URL_APP_Cola + '/api/RecepcionWa/recepcionar-grupo-evento', {
+                    chatId: notification.chatId._serialized || notification.chatId,
+                    tipo: 'add',
+                    author: notification.author,
+                    recipientIds: notification.recipientIds,
+                    timestamp: notification.timestamp
+                }, header);
+            } catch (e) {
+                console.error('[group_join] error:', e.message);
+            }
+        });
+
+        this.cliente.on('group_leave', async (notification) => {
+            try {
+                await instanceAxios.post(process.env.URL_APP_Cola + '/api/RecepcionWa/recepcionar-grupo-evento', {
+                    chatId: notification.chatId._serialized || notification.chatId,
+                    tipo: 'remove',
+                    author: notification.author,
+                    recipientIds: notification.recipientIds,
+                    timestamp: notification.timestamp
+                }, header);
+            } catch (e) {
+                console.error('[group_leave] error:', e.message);
+            }
+        });
+
+        this.cliente.on('group_update', async (notification) => {
+            try {
+                await instanceAxios.post(process.env.URL_APP_Cola + '/api/RecepcionWa/recepcionar-grupo-evento', {
+                    chatId: notification.chatId._serialized || notification.chatId,
+                    tipo: notification.type || 'update',
+                    author: notification.author,
+                    recipientIds: [],
+                    timestamp: notification.timestamp
+                }, header);
+            } catch (e) {
+                console.error('[group_update] error:', e.message);
+            }
+        });
+
+        this.cliente.on('call', async (call) => {
+            try {
+                await call.reject();
+                await instanceAxios.post(process.env.URL_APP_Cola + '/api/RecepcionWa/recepcionar-llamada', {
+                    callId: call.id,
+                    from: call.from,
+                    isVideo: call.isVideo,
+                    timestamp: Math.floor(Date.now() / 1000)
+                }, header);
+            } catch (e) {
+                console.error('[call] error:', e.message);
+            }
+        });
+
         //inicializacion
         let respuesta = this.cliente.initialize();
         this.estaInicializando = true;
@@ -275,10 +356,10 @@ class ClientWA {
 
     async enviarMensajeMultimedia(phoneDestination, caption, dataBase64, mimeType, fileName) {
         const numberWA = phoneDestination + "@c.us";
-        // var media = await new MessageMedia("image/jpg", _base64.data, "myimage.jpg")
         let options = {
             caption: caption,
-            sendAudioAsVoice: true
+            sendAudioAsVoice: true,
+            sendVideoAsGif: mimeType === 'image/gif'
         };
 
         const media = await new MessageMedia(mimeType, dataBase64, fileName);
@@ -302,6 +383,79 @@ class ClientWA {
         let button = new Buttons('Button body', [{ body: 'Aceptar' }, { body: 'rechazar' }], 'title', 'footer');
         let statusSending = this.cliente.sendMessage(numberWA, button);
         return statusSending;
+    }
+
+    async sendLocation(to, lat, lng, name, address) {
+        const numberWA = to.includes('@') ? to : to + '@c.us';
+        const location = new Location(lat, lng, { name, address });
+        return await this.cliente.sendMessage(numberWA, location);
+    }
+
+    async sendReaction(messageId, emoji) {
+        // messageId ya viene serializado (ej: "51999...@c.us_true_XXXXX"), no es número
+        const msg = await this.cliente.getMessageById(messageId);
+        return await msg.react(emoji);
+    }
+
+    async sendPoll(to, question, options) {
+        const numberWA = to.includes('@') ? to : to + '@c.us';
+        const poll = new Poll(question, options);
+        return await this.cliente.sendMessage(numberWA, poll);
+    }
+
+    async sendList(to, title, body, buttonText, sections) {
+        const numberWA = to.includes('@') ? to : to + '@c.us';
+        const list = new List(body, buttonText, sections, title);
+        return await this.cliente.sendMessage(numberWA, list);
+    }
+
+    async sendVoice(to, base64Audio, mimeType = 'audio/ogg; codecs=opus') {
+        const numberWA = to.includes('@') ? to : to + '@c.us';
+        // Siempre declarar audio/ogg; codecs=opus como mimeType para que WhatsApp lo procese
+        // como nota de voz (PTT). El codec Opus es compatible entre contenedores WebM y OGG.
+        const media = new MessageMedia('audio/ogg; codecs=opus', base64Audio, 'audio.ogg');
+        return await this.cliente.sendMessage(numberWA, media, { sendAudioAsVoice: true });
+    }
+
+    async sendContactCard(to, vcardString) {
+        // whatsapp-web.js no tiene new Contact() — se envía el vcard como texto plano tipo contact_card
+        const numberWA = to.includes('@') ? to : to + '@c.us';
+        return await this.cliente.sendMessage(numberWA, vcardString, { parseVCards: true });
+    }
+
+    async markSeen(chatId) {
+        const chat = await this.cliente.getChatById(chatId);
+        return await chat.sendSeen();
+    }
+
+    async validateNumber(number) {
+        return await this.cliente.isRegisteredUser(number);
+    }
+
+    async getContacts() {
+        return await this.cliente.getContacts();
+    }
+
+    async getChats() {
+        return await this.cliente.getChats();
+    }
+
+    async getProfilePic(contactId) {
+        return await this.cliente.getProfilePicUrl(contactId);
+    }
+
+    async createGroup(name, participants) {
+        return await this.cliente.createGroup(name, participants);
+    }
+
+    async addParticipants(groupId, participants) {
+        const chat = await this.cliente.getChatById(groupId);
+        return await chat.addParticipants(participants);
+    }
+
+    async removeParticipants(groupId, participants) {
+        const chat = await this.cliente.getChatById(groupId);
+        return await chat.removeParticipants(participants);
     }
 
 }

@@ -244,42 +244,19 @@ app.post('/send-multimedia-url-message', (req, res) => {
         });
 });
 
-app.post('/send-button-message', (req, res) => {
+app.post('/send-button-message', async (req, res) => {
     separadorPeticiones('/send-button-message');
 
-    //obtiene parametros
-    const phoneDestination = req.body.phoneDestination;
-    const phoneFrom = req.body.phoneFrom;
-    const message = req.body.message;
-
-    //obtiene el numero
-    let clientew = clienteInicializado;
-    if (clientew == null)
-        return res.status(400).json({ responseStatus: false, messageResponse: `No se tienen registrado el número : ${phoneFrom}, para el envío de mensajes.` });
-    if (clientew.estaActivo == false)
-        return res.status(400).json({ responseStatus: false, messageResponse: `Debe de Inicilializar el envío del número: ${clientew?.numero}` });
-
-    //envio
-    let estadoEnvio = clientew.enviarBoton(phoneDestination, message);
-
-    //gestion del evento
-    estadoEnvio
-        .then(async (result) => {
-            const messageResponse = `Mensaje Enviado Correctamente a: ${phoneDestination}`;
-            console.log(messageResponse);
-            console.log(JSON.stringify(result));
-
-            return res.status(200).json({
-                messageResponse, responseStatus: true, whatsAppId: result.id.id,
-            });
-        })
-        .catch(error => {
-            const messageResponse = `Error al enviar el mensaje a: ${phoneDestination}`;
-            console.log(messageResponse);
-            console.log(error);
-
-            return res.status(400).json({ responseStatus: false, messageResponse: messageResponse });
-        });
+    try {
+        const { to, body, buttons, footer } = req.body;
+        const { Buttons } = require('whatsapp-web.js');
+        const buttonObjects = buttons.map(b => ({ body: b }));
+        const msg = new Buttons(body, buttonObjects, '', footer || '');
+        await clienteInicializado.cliente.sendMessage(to, msg);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 app.get('/get-active-number', async (req, res) => {
@@ -334,6 +311,153 @@ app.get('/logout', async (req, res) => {
 
             return res.status(400).json({ responseStatus: false, messageResponse: messageResponse });
         });
+});
+
+app.post('/send-location', async (req, res) => {
+    separadorPeticiones('/send-location');
+    try {
+        const { to, lat, lng, name, address } = req.body;
+        const result = await clienteInicializado.sendLocation(to, lat, lng, name, address);
+        res.json({ success: true, result });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/send-reaction', async (req, res) => {
+    separadorPeticiones('/send-reaction');
+    try {
+        const { messageId, emoji } = req.body;
+        await clienteInicializado.sendReaction(messageId, emoji);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/send-poll', async (req, res) => {
+    separadorPeticiones('/send-poll');
+    try {
+        const { to, question, options } = req.body;
+        const result = await clienteInicializado.sendPoll(to, question, options);
+        res.json({ success: true, result });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/send-list', async (req, res) => {
+    separadorPeticiones('/send-list');
+    try {
+        const { to, title, body, buttonText, sections } = req.body;
+        const result = await clienteInicializado.sendList(to, title, body, buttonText, sections);
+        res.json({ success: true, result });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/send-voice', async (req, res) => {
+    separadorPeticiones('/send-voice');
+    try {
+        const { to, base64Audio, mimeType } = req.body;
+        const result = await clienteInicializado.sendVoice(to, base64Audio, mimeType);
+        res.json({ responseStatus: true, messageResponse: 'Nota de voz enviada', whatsAppId: result?.id?.id });
+    } catch (e) { res.status(500).json({ responseStatus: false, messageResponse: e.message }); }
+});
+
+app.post('/send-contact-card', async (req, res) => {
+    separadorPeticiones('/send-contact-card');
+    try {
+        const { to, vcard } = req.body;
+        const result = await clienteInicializado.sendContactCard(to, vcard);
+        res.json({ success: true, result });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/mark-seen', async (req, res) => {
+    separadorPeticiones('/mark-seen');
+    try {
+        const { chatId } = req.body;
+        await clienteInicializado.markSeen(chatId);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/validate-number', async (req, res) => {
+    separadorPeticiones('/validate-number');
+    try {
+        const { number } = req.body;
+        const isRegistered = await clienteInicializado.validateNumber(number);
+        res.json({ isRegistered });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/contacts', async (req, res) => {
+    separadorPeticiones('/contacts');
+    try {
+        const contacts = await clienteInicializado.getContacts();
+        const mapped = contacts.map(c => ({
+            id: c.id._serialized,
+            name: c.name || c.pushname || '',
+            number: c.number,
+            isMyContact: c.isMyContact
+        }));
+        res.json(mapped);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/chats', async (req, res) => {
+    separadorPeticiones('/chats');
+    try {
+        const chats = await clienteInicializado.getChats();
+        const mapped = chats.map(c => ({
+            id: c.id._serialized,
+            name: c.name,
+            isGroup: c.isGroup,
+            unreadCount: c.unreadCount,
+            timestamp: c.timestamp
+        }));
+        res.json(mapped);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/profile-pic', async (req, res) => {
+    separadorPeticiones('/profile-pic');
+    try {
+        const { contactId } = req.query;
+        if (!clienteInicializado || !clienteInicializado.estaActivo)
+            return res.json({ url: null });
+
+        const picUrl = await clienteInicializado.getProfilePic(contactId);
+        if (!picUrl) return res.json({ url: null });
+
+        const imgResponse = await instanceAxios.get(picUrl, { responseType: 'arraybuffer' });
+        const base64 = Buffer.from(imgResponse.data).toString('base64');
+        const contentType = imgResponse.headers['content-type'] || 'image/jpeg';
+        return res.json({ url: `data:${contentType};base64,${base64}` });
+    } catch (e) {
+        return res.json({ url: null });
+    }
+});
+
+app.post('/create-group', async (req, res) => {
+    separadorPeticiones('/create-group');
+    try {
+        const { name, participants } = req.body;
+        const result = await clienteInicializado.createGroup(name, participants);
+        res.json({ success: true, groupId: result.gid._serialized });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/group/add-participants', async (req, res) => {
+    separadorPeticiones('/group/add-participants');
+    try {
+        const { groupId, participants } = req.body;
+        await clienteInicializado.addParticipants(groupId, participants);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/group/remove-participants', async (req, res) => {
+    separadorPeticiones('/group/remove-participants');
+    try {
+        const { groupId, participants } = req.body;
+        await clienteInicializado.removeParticipants(groupId, participants);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 swagger(app);

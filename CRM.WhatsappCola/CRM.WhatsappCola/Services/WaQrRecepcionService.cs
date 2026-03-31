@@ -2,7 +2,9 @@
 using CRM.WhatsappCola.DTOs.Notificacion;
 using CRM.WhatsappCola.DTOs.WaEntrante;
 using CRM.WhatsappCola.Enum;
+using CRM.WhatsappCola.Hubs;
 using CRM.WhatsappCola.Models;
+using Microsoft.AspNetCore.SignalR;
 using Newtonsoft.Json;
 using QRCoder;
 
@@ -400,6 +402,101 @@ namespace CRM.WhatsappCola.Services
         }
 
         #endregion Notificaciones
+
+        public async Task<object> RecepcionarAck(WaAckDTO dto)
+        {
+            try
+            {
+                var mensaje = _db.TMensajeCola
+                    .FirstOrDefault(m => m.WhatsAppId == dto.WhatsAppId);
+
+                if (mensaje != null)
+                {
+                    mensaje.AckEstado = dto.AckEstado;
+                    mensaje.FechaModificacion = DateTime.Now;
+                    _db.SaveChanges();
+                }
+
+                HubContextHolder.ChatContext?.Clients.All
+                    .SendAsync("AckActualizado", dto.WhatsAppId, dto.AckEstado)
+                    .Wait();
+
+                return new { success = true };
+            }
+            catch (Exception ex)
+            {
+                return new { success = false, error = ex.Message };
+            }
+        }
+
+        public async Task<object> RecepcionarReaccion(WaReaccionDTO dto)
+        {
+            try
+            {
+                var reaccion = new TMensajeReaccion
+                {
+                    WhatsAppId = dto.WhatsAppId,
+                    Emoji = dto.Emoji,
+                    SenderId = dto.SenderId,
+                    FechaReaccion = DateTime.Now,
+                    Estado = true
+                };
+                _db.TMensajeReaccion.Add(reaccion);
+                _db.SaveChanges();
+
+                HubContextHolder.ChatContext?.Clients.All
+                    .SendAsync("NuevaReaccion", dto.WhatsAppId, dto.Emoji, dto.SenderId)
+                    .Wait();
+
+                return new { success = true };
+            }
+            catch (Exception ex)
+            {
+                return new { success = false, error = ex.Message };
+            }
+        }
+
+        public async Task<object> RecepcionarGrupoEvento(WaGrupoEventoDTO dto)
+        {
+            try
+            {
+                var evento = new TGrupoEvento
+                {
+                    ChatId = dto.ChatId,
+                    Tipo = dto.Tipo,
+                    Author = dto.Author ?? "",
+                    Recipients = dto.RecipientIds != null && dto.RecipientIds.Any()
+                        ? System.Text.Json.JsonSerializer.Serialize(dto.RecipientIds)
+                        : null,
+                    FechaEvento = DateTime.Now,
+                    Estado = true
+                };
+                _db.TGrupoEvento.Add(evento);
+                _db.SaveChanges();
+
+                return new { success = true };
+            }
+            catch (Exception ex)
+            {
+                return new { success = false, error = ex.Message };
+            }
+        }
+
+        public Task<object> RecepcionarLlamada(WaLlamadaDTO dto)
+        {
+            try
+            {
+                HubContextHolder.ChatContext?.Clients.All
+                    .SendAsync("LlamadaEntrante", dto.From, dto.IsVideo)
+                    .Wait();
+
+                return Task.FromResult<object>(new { success = true });
+            }
+            catch (Exception ex)
+            {
+                return Task.FromResult<object>(new { success = false, error = ex.Message });
+            }
+        }
 
         #region Notificaciones - CRM
 

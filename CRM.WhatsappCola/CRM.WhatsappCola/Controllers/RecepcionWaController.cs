@@ -57,5 +57,37 @@ namespace CRM.WhatsappCola.Controllers
             ResultadoRecibirNumeroDTO resultado = recepcionService.RecepcionarNumero(numeroDto);
             return Ok(resultado);
         }
+
+        [HttpPost("recepcionar-ack")]
+        public async Task<IActionResult> RecepcionarAck([FromBody] WaAckDTO dto)
+        {
+            var service = new WaQrRecepcionService(_db);
+            var resultado = await service.RecepcionarAck(dto);
+            return Ok(resultado);
+        }
+
+        [HttpPost("recepcionar-reaccion")]
+        public async Task<IActionResult> RecepcionarReaccion([FromBody] WaReaccionDTO dto)
+        {
+            var service = new WaQrRecepcionService(_db);
+            var resultado = await service.RecepcionarReaccion(dto);
+            return Ok(resultado);
+        }
+
+        [HttpPost("recepcionar-grupo-evento")]
+        public async Task<IActionResult> RecepcionarGrupoEvento([FromBody] WaGrupoEventoDTO dto)
+        {
+            var service = new WaQrRecepcionService(_db);
+            var resultado = await service.RecepcionarGrupoEvento(dto);
+            return Ok(resultado);
+        }
+
+        [HttpPost("recepcionar-llamada")]
+        public async Task<IActionResult> RecepcionarLlamada([FromBody] WaLlamadaDTO dto)
+        {
+            var service = new WaQrRecepcionService(_db);
+            var resultado = await service.RecepcionarLlamada(dto);
+            return Ok(resultado);
+        }
     }
 }

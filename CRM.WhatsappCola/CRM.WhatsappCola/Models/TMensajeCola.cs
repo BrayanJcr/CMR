@@ -100,5 +100,7 @@ public partial class TMensajeCola
     /// </summary>
     public string WhatsAppId { get; set; }
 
+    public int AckEstado { get; set; }
+
     public virtual TMensajeColaEstado IdMensajeColaEstadoNavigation { get; set; }
 }

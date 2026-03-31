@@ -40,8 +40,8 @@ public partial class WA_ColaContext
             entity.Property(e => e.Web).HasMaxLength(256).IsUnicode(false);
             entity.Property(e => e.UsuarioCreacion).IsRequired().HasMaxLength(50).IsUnicode(false);
             entity.Property(e => e.UsuarioModificacion).IsRequired().HasMaxLength(50).IsUnicode(false);
-            entity.Property(e => e.FechaCreacion).HasColumnType("datetime");
-            entity.Property(e => e.FechaModificacion).HasColumnType("datetime");
+            entity.Property(e => e.FechaCreacion).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.FechaModificacion).HasColumnType("timestamp without time zone");
         });
 
         // T_Contacto
@@ -55,8 +55,8 @@ public partial class WA_ColaContext
             entity.Property(e => e.Cargo).HasMaxLength(128);
             entity.Property(e => e.UsuarioCreacion).IsRequired().HasMaxLength(50).IsUnicode(false);
             entity.Property(e => e.UsuarioModificacion).IsRequired().HasMaxLength(50).IsUnicode(false);
-            entity.Property(e => e.FechaCreacion).HasColumnType("datetime");
-            entity.Property(e => e.FechaModificacion).HasColumnType("datetime");
+            entity.Property(e => e.FechaCreacion).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.FechaModificacion).HasColumnType("timestamp without time zone");
             entity.HasOne(d => d.IdEmpresaNavigation)
                 .WithMany(p => p.TContacto)
                 .HasForeignKey(d => d.IdEmpresa)
@@ -71,8 +71,8 @@ public partial class WA_ColaContext
             entity.Property(e => e.Color).IsRequired().HasMaxLength(20).IsUnicode(false).HasDefaultValue("#3B82F6");
             entity.Property(e => e.UsuarioCreacion).IsRequired().HasMaxLength(50).IsUnicode(false);
             entity.Property(e => e.UsuarioModificacion).IsRequired().HasMaxLength(50).IsUnicode(false);
-            entity.Property(e => e.FechaCreacion).HasColumnType("datetime");
-            entity.Property(e => e.FechaModificacion).HasColumnType("datetime");
+            entity.Property(e => e.FechaCreacion).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.FechaModificacion).HasColumnType("timestamp without time zone");
         });
 
         // T_ContactoEtiqueta
@@ -80,7 +80,7 @@ public partial class WA_ColaContext
         {
             entity.ToTable("T_ContactoEtiqueta");
             entity.Property(e => e.UsuarioCreacion).IsRequired().HasMaxLength(50).IsUnicode(false);
-            entity.Property(e => e.FechaCreacion).HasColumnType("datetime");
+            entity.Property(e => e.FechaCreacion).HasColumnType("timestamp without time zone");
             entity.HasOne(d => d.IdContactoNavigation).WithMany(p => p.TContactoEtiqueta)
                 .HasForeignKey(d => d.IdContacto).HasConstraintName("FK_T_ContactoEtiqueta_T_Contacto");
             entity.HasOne(d => d.IdEtiquetaNavigation).WithMany(p => p.TContactoEtiqueta)
@@ -95,8 +95,8 @@ public partial class WA_ColaContext
             entity.Property(e => e.Color).IsRequired().HasMaxLength(20).IsUnicode(false).HasDefaultValue("#3B82F6");
             entity.Property(e => e.UsuarioCreacion).IsRequired().HasMaxLength(50).IsUnicode(false);
             entity.Property(e => e.UsuarioModificacion).IsRequired().HasMaxLength(50).IsUnicode(false);
-            entity.Property(e => e.FechaCreacion).HasColumnType("datetime");
-            entity.Property(e => e.FechaModificacion).HasColumnType("datetime");
+            entity.Property(e => e.FechaCreacion).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.FechaModificacion).HasColumnType("timestamp without time zone");
         });
 
         // T_Producto
@@ -109,8 +109,8 @@ public partial class WA_ColaContext
             entity.Property(e => e.Unidad).HasMaxLength(50).IsUnicode(false).HasDefaultValue("unidad");
             entity.Property(e => e.UsuarioCreacion).IsRequired().HasMaxLength(50).IsUnicode(false);
             entity.Property(e => e.UsuarioModificacion).IsRequired().HasMaxLength(50).IsUnicode(false);
-            entity.Property(e => e.FechaCreacion).HasColumnType("datetime");
-            entity.Property(e => e.FechaModificacion).HasColumnType("datetime");
+            entity.Property(e => e.FechaCreacion).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.FechaModificacion).HasColumnType("timestamp without time zone");
             entity.HasOne(d => d.IdCategoriaNavigation).WithMany(p => p.TProducto)
                 .HasForeignKey(d => d.IdCategoria).HasConstraintName("FK_T_Producto_T_ProductoCategoria");
         });
@@ -123,8 +123,8 @@ public partial class WA_ColaContext
             entity.Property(e => e.Color).IsRequired().HasMaxLength(20).IsUnicode(false).HasDefaultValue("#3B82F6");
             entity.Property(e => e.UsuarioCreacion).IsRequired().HasMaxLength(50).IsUnicode(false);
             entity.Property(e => e.UsuarioModificacion).IsRequired().HasMaxLength(50).IsUnicode(false);
-            entity.Property(e => e.FechaCreacion).HasColumnType("datetime");
-            entity.Property(e => e.FechaModificacion).HasColumnType("datetime");
+            entity.Property(e => e.FechaCreacion).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.FechaModificacion).HasColumnType("timestamp without time zone");
         });
 
         // T_Oportunidad
@@ -135,13 +135,13 @@ public partial class WA_ColaContext
             entity.Property(e => e.MontoEstimado).HasColumnType("decimal(18,2)").HasDefaultValue(0m);
             entity.Property(e => e.Moneda).HasMaxLength(10).IsUnicode(false).HasDefaultValue("USD");
             entity.Property(e => e.Probabilidad).HasDefaultValue(50);
-            entity.Property(e => e.FechaCierre).HasColumnType("datetime");
+            entity.Property(e => e.FechaCierre).HasColumnType("timestamp without time zone");
             entity.Property(e => e.Origen).HasMaxLength(50).IsUnicode(false).HasDefaultValue("whatsapp");
             entity.Property(e => e.Prioridad).HasMaxLength(20).IsUnicode(false).HasDefaultValue("media");
             entity.Property(e => e.UsuarioCreacion).IsRequired().HasMaxLength(50).IsUnicode(false);
             entity.Property(e => e.UsuarioModificacion).IsRequired().HasMaxLength(50).IsUnicode(false);
-            entity.Property(e => e.FechaCreacion).HasColumnType("datetime");
-            entity.Property(e => e.FechaModificacion).HasColumnType("datetime");
+            entity.Property(e => e.FechaCreacion).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.FechaModificacion).HasColumnType("timestamp without time zone");
             entity.HasOne(d => d.IdContactoNavigation).WithMany(p => p.TOportunidad)
                 .HasForeignKey(d => d.IdContacto).HasConstraintName("FK_T_Oportunidad_T_Contacto");
             entity.HasOne(d => d.IdEmpresaNavigation).WithMany(p => p.TOportunidad)
@@ -159,7 +159,7 @@ public partial class WA_ColaContext
             entity.Property(e => e.Cantidad).HasColumnType("decimal(18,2)").HasDefaultValue(1m);
             entity.Property(e => e.PrecioUnitario).HasColumnType("decimal(18,2)").HasDefaultValue(0m);
             entity.Property(e => e.UsuarioCreacion).IsRequired().HasMaxLength(50).IsUnicode(false);
-            entity.Property(e => e.FechaCreacion).HasColumnType("datetime");
+            entity.Property(e => e.FechaCreacion).HasColumnType("timestamp without time zone");
             entity.HasOne(d => d.IdOportunidadNavigation).WithMany(p => p.TOportunidadProducto)
                 .HasForeignKey(d => d.IdOportunidad).HasConstraintName("FK_T_OportunidadProducto_T_Oportunidad");
             entity.HasOne(d => d.IdProductoNavigation).WithMany(p => p.TOportunidadProducto)
@@ -173,11 +173,11 @@ public partial class WA_ColaContext
             entity.Property(e => e.Tipo).IsRequired().HasMaxLength(50).IsUnicode(false);
             entity.Property(e => e.Titulo).IsRequired().HasMaxLength(256);
             entity.Property(e => e.EstadoActividad).HasMaxLength(20).IsUnicode(false).HasDefaultValue("pendiente");
-            entity.Property(e => e.FechaActividad).HasColumnType("datetime");
+            entity.Property(e => e.FechaActividad).HasColumnType("timestamp without time zone");
             entity.Property(e => e.UsuarioCreacion).IsRequired().HasMaxLength(50).IsUnicode(false);
             entity.Property(e => e.UsuarioModificacion).IsRequired().HasMaxLength(50).IsUnicode(false);
-            entity.Property(e => e.FechaCreacion).HasColumnType("datetime");
-            entity.Property(e => e.FechaModificacion).HasColumnType("datetime");
+            entity.Property(e => e.FechaCreacion).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.FechaModificacion).HasColumnType("timestamp without time zone");
             entity.HasOne(d => d.IdResponsableNavigation).WithMany()
                 .HasForeignKey(d => d.IdResponsable).HasConstraintName("FK_T_Actividad_T_Usuario");
             entity.HasOne(d => d.IdContactoNavigation).WithMany(p => p.TActividad)
@@ -197,8 +197,8 @@ public partial class WA_ColaContext
             entity.Property(e => e.Contenido).IsRequired();
             entity.Property(e => e.UsuarioCreacion).IsRequired().HasMaxLength(50).IsUnicode(false);
             entity.Property(e => e.UsuarioModificacion).IsRequired().HasMaxLength(50).IsUnicode(false);
-            entity.Property(e => e.FechaCreacion).HasColumnType("datetime");
-            entity.Property(e => e.FechaModificacion).HasColumnType("datetime");
+            entity.Property(e => e.FechaCreacion).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.FechaModificacion).HasColumnType("timestamp without time zone");
         });
 
         // T_Campana
@@ -207,11 +207,11 @@ public partial class WA_ColaContext
             entity.ToTable("T_Campana");
             entity.Property(e => e.Nombre).IsRequired().HasMaxLength(256);
             entity.Property(e => e.EstadoCampana).HasMaxLength(20).IsUnicode(false).HasDefaultValue("borrador");
-            entity.Property(e => e.ProgramadaPara).HasColumnType("datetime");
+            entity.Property(e => e.ProgramadaPara).HasColumnType("timestamp without time zone");
             entity.Property(e => e.UsuarioCreacion).IsRequired().HasMaxLength(50).IsUnicode(false);
             entity.Property(e => e.UsuarioModificacion).IsRequired().HasMaxLength(50).IsUnicode(false);
-            entity.Property(e => e.FechaCreacion).HasColumnType("datetime");
-            entity.Property(e => e.FechaModificacion).HasColumnType("datetime");
+            entity.Property(e => e.FechaCreacion).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.FechaModificacion).HasColumnType("timestamp without time zone");
             entity.HasOne(d => d.IdPlantillaNavigation).WithMany()
                 .HasForeignKey(d => d.IdPlantilla).HasConstraintName("FK_T_Campana_T_Plantilla");
         });
@@ -220,7 +220,7 @@ public partial class WA_ColaContext
         modelBuilder.Entity<TCampanaContacto>(entity =>
         {
             entity.ToTable("T_CampanaContacto");
-            entity.Property(e => e.FechaEnvio).HasColumnType("datetime");
+            entity.Property(e => e.FechaEnvio).HasColumnType("timestamp without time zone");
             entity.HasOne(d => d.IdCampanaNavigation).WithMany(p => p.TCampanaContacto)
                 .HasForeignKey(d => d.IdCampana).HasConstraintName("FK_T_CampanaContacto_T_Campana");
             entity.HasOne(d => d.IdContactoNavigation).WithMany()
@@ -235,8 +235,8 @@ public partial class WA_ColaContext
             entity.Property(e => e.Categoria).HasMaxLength(100).IsUnicode(false).HasDefaultValue("general");
             entity.Property(e => e.UsuarioCreacion).IsRequired().HasMaxLength(50).IsUnicode(false);
             entity.Property(e => e.UsuarioModificacion).IsRequired().HasMaxLength(50).IsUnicode(false);
-            entity.Property(e => e.FechaCreacion).HasColumnType("datetime");
-            entity.Property(e => e.FechaModificacion).HasColumnType("datetime");
+            entity.Property(e => e.FechaCreacion).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.FechaModificacion).HasColumnType("timestamp without time zone");
         });
 
         // T_EncuestaPregunta
@@ -256,8 +256,8 @@ public partial class WA_ColaContext
             entity.HasIndex(e => e.Token, "UQ_EncuestaEnvio_Token").IsUnique();
             entity.Property(e => e.Token).IsRequired().HasMaxLength(100).IsUnicode(false);
             entity.Property(e => e.EstadoEnvio).HasMaxLength(20).IsUnicode(false).HasDefaultValue("pendiente");
-            entity.Property(e => e.FechaEnvio).HasColumnType("datetime");
-            entity.Property(e => e.FechaCompletado).HasColumnType("datetime");
+            entity.Property(e => e.FechaEnvio).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.FechaCompletado).HasColumnType("timestamp without time zone");
             entity.HasOne(d => d.IdEncuestaNavigation).WithMany(p => p.TEncuestaEnvio)
                 .HasForeignKey(d => d.IdEncuesta).HasConstraintName("FK_T_EncuestaEnvio_T_Encuesta");
             entity.HasOne(d => d.IdContactoNavigation).WithMany()
@@ -282,7 +282,7 @@ public partial class WA_ColaContext
             entity.Property(e => e.Clave).IsRequired().HasMaxLength(100).IsUnicode(false);
             entity.Property(e => e.Tipo).HasMaxLength(20).IsUnicode(false).HasDefaultValue("string");
             entity.Property(e => e.UsuarioModificacion).IsRequired().HasMaxLength(50).IsUnicode(false);
-            entity.Property(e => e.FechaModificacion).HasColumnType("datetime");
+            entity.Property(e => e.FechaModificacion).HasColumnType("timestamp without time zone");
         });
     }
 }

@@ -38,4 +38,6 @@ public partial class VObtenerDetalleMensajes
     public string NombreArchivo { get; set; }
 
     public bool? EsErrorDescargaMultimedia { get; set; }
+
+    public int? AckEstado { get; set; }
 }

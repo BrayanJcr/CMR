@@ -180,17 +180,32 @@ namespace CRM.WhatsappCola.Services
                             {
                                 if (!string.IsNullOrEmpty(mensaje.AdjuntoBase64))
                                 {
-                                    respuestaEnvio = waService.EnviarMensajeMultimediaPayload(new WAMensajeMultimediaPayloadDTO()
-                                    {
-                                        NumeroOrigen = mensaje.NumeroRemitente,
-                                        NumeroDestino = mensaje.NumeroDestino,
-                                        Mensage = mensaje.Mensaje,
+                                    bool esAudio = !string.IsNullOrEmpty(mensaje.MimeType) &&
+                                                   mensaje.MimeType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase);
 
-                                        AdjuntoBase64 = mensaje.AdjuntoBase64,
-                                        NombreArchivo = mensaje.NombreArchivo,
-                                        MimeType = mensaje.MimeType,
-                                        NroByte = mensaje.NroByte,
-                                    });
+                                    if (esAudio)
+                                    {
+                                        respuestaEnvio = waService.EnviarMensajeVoz(new WAMensajeVozDTO()
+                                        {
+                                            NumeroDestino = mensaje.NumeroDestino,
+                                            Base64Audio = mensaje.AdjuntoBase64,
+                                            MimeType = mensaje.MimeType,
+                                        });
+                                    }
+                                    else
+                                    {
+                                        respuestaEnvio = waService.EnviarMensajeMultimediaPayload(new WAMensajeMultimediaPayloadDTO()
+                                        {
+                                            NumeroOrigen = mensaje.NumeroRemitente,
+                                            NumeroDestino = mensaje.NumeroDestino,
+                                            Mensage = mensaje.Mensaje,
+
+                                            AdjuntoBase64 = mensaje.AdjuntoBase64,
+                                            NombreArchivo = mensaje.NombreArchivo,
+                                            MimeType = mensaje.MimeType,
+                                            NroByte = mensaje.NroByte,
+                                        });
+                                    }
                                 }
                                 else
                                 {
@@ -211,6 +226,7 @@ namespace CRM.WhatsappCola.Services
                             if (respuestaEnvio.Estado)
                             {
                                 mensaje.IdMensajeColaEstado = (int)MensajeColaEstadoEnum.Enviado;
+                                mensaje.WhatsAppId = respuestaEnvio.WhatsAppId;
 
                                 _db.TMensajeCola.Update(mensaje);
                                 _db.SaveChanges();

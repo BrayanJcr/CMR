@@ -101,6 +101,24 @@ namespace CRM.WhatsappCola.Controllers
             }
         }
 
+        [HttpGet("foto-perfil")]
+        public async Task<IActionResult> ObtenerFotoPerfil([FromQuery] string numero)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(numero))
+                    return BadRequest("El número es requerido");
+
+                var waQr = new WaQrService();
+                var url = waQr.ObtenerFotoPerfil(numero);
+                return Ok(new { url });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message + (ex.InnerException != null ? " - " + ex.InnerException.Message : ""));
+            }
+        }
+
         [HttpPost("cerrar-sesion")]
         public async Task<IActionResult> CerrarSesion([FromBody] WhatsAppCerrarSesionDTO dto)
         {

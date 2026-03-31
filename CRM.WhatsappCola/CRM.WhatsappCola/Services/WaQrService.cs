@@ -94,6 +94,32 @@ namespace CRM.WhatsappCola.Services
             return respuesta;
         }
 
+        public WARespuestaDTO EnviarMensajeVoz(WAMensajeVozDTO mensaje)
+        {
+            WARespuestaDTO respuesta = new WARespuestaDTO();
+
+            try
+            {
+                string url = $"{_baseUrl}/send-voice";
+                string data = JsonConvert.SerializeObject(mensaje);
+                GenerarHeaders();
+                var response = _webclient.UploadString(url, "POST", data);
+                var dto = JsonConvert.DeserializeObject<WARespuestaDTO>(response);
+
+                respuesta = dto;
+            }
+            catch (Exception ex)
+            {
+                respuesta = new WARespuestaDTO()
+                {
+                    Estado = false,
+                    Mensage = ex.Message
+                };
+            }
+
+            return respuesta;
+        }
+
         public WARespuestaDTO EnviarMensajeMultimediaUrl(WAMensajeMultimediaUrlDTO mensaje)
         {
             WARespuestaDTO respuesta = new WARespuestaDTO();
@@ -194,6 +220,23 @@ namespace CRM.WhatsappCola.Services
             }
 
             return respuesta;
+        }
+
+        public string ObtenerFotoPerfil(string numero)
+        {
+            try
+            {
+                string contactId = Uri.EscapeDataString($"{numero}@c.us");
+                string url = $"{_baseUrl}/profile-pic?contactId={contactId}";
+                GenerarHeaders();
+                var response = _webclient.DownloadString(url);
+                var dto = JsonConvert.DeserializeObject<dynamic>(response);
+                return dto?.url?.ToString();
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         public WARespuestaDTO CerrarSesion(string numero)

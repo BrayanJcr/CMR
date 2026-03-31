@@ -7,6 +7,7 @@ import { ArrowLeftOutlined, MessageOutlined, PlusOutlined, EditOutlined } from '
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../../api/axios'
 import { formatDate, formatDateTime } from '../../utils/format'
+import WaAvatar from '../../components/WaAvatar'
 import { getPrioridadColor, getPrioridadLabel } from '../../utils/prioridad'
 import dayjs from 'dayjs'
 
@@ -157,7 +158,9 @@ export default function ContactoDetalle() {
 
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+            <WaAvatar numero={phone} nombre={nombre} size={64} style={{ flexShrink: 0, borderRadius: '50%' }} />
+            <div>
             <Title level={3} style={{ marginBottom: 8 }}>{nombre || 'Sin nombre'}</Title>
             <Space wrap>
               {phone && <Tag icon={<MessageOutlined />} color="green">{phone}</Tag>}
@@ -166,6 +169,7 @@ export default function ContactoDetalle() {
                 <Tag key={i} color={et.color || et.Color || 'blue'}>{et.nombre || et.Nombre}</Tag>
               ))}
             </Space>
+            </div>
           </div>
           <Space>
             {phone && (

@@ -10,6 +10,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import api from '../../api/axios'
 import { formatDate, getInitials } from '../../utils/format'
+import WaAvatar from '../../components/WaAvatar'
 
 const { Title } = Typography
 const { Option } = Select
@@ -128,6 +129,16 @@ export default function ContactosList() {
   }
 
   const columns = [
+    {
+      title: '',
+      key: 'avatar',
+      width: 52,
+      render: (_, r) => {
+        const numero = r.numeroWhatsApp || r.NumeroWhatsApp || ''
+        const nombre = `${r.nombres || r.Nombres || ''} ${r.apellidos || r.Apellidos || ''}`.trim()
+        return <WaAvatar numero={numero} nombre={nombre} size={36} />
+      }
+    },
     {
       title: 'Nombre Completo',
       key: 'nombre',

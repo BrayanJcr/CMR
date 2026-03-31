@@ -474,7 +474,7 @@ export default function ChatPage() {
     const tieneDoc    = !!mimeType && !tieneFoto && !tieneVideo && !tieneAudio
     const tieneMapa   = whatsAppTipo === 'location'
 
-    const base64Src = msg.adjuntoBase64 || msg.AdjuntoBase64
+    const base64Src = (msg.adjuntoBase64 || msg.AdjuntoBase64)
       ? `data:${mimeType};base64,${msg.adjuntoBase64 || msg.AdjuntoBase64}`
       : (msg.urlArchivo || msg.UrlArchivo || null)
 

@@ -525,6 +525,25 @@ SELECT 'T_ConfiguracionSistema',             COUNT(*) FROM "T_ConfiguracionSiste
 
 -- Script completado. Base de datos wa_cola (PostgreSQL) lista.
 
+-- =============================================
+-- Configuración de Proveedor WhatsApp
+-- =============================================
+INSERT INTO "T_ConfiguracionSistema" ("Clave","Valor","Tipo","Descripcion","UsuarioModificacion","FechaModificacion")
+SELECT 'whatsapp_proveedor','wwebjs','string','Proveedor activo de WhatsApp: wwebjs | baileys','sistema',NOW()
+WHERE NOT EXISTS (SELECT 1 FROM "T_ConfiguracionSistema" WHERE "Clave" = 'whatsapp_proveedor');
+
+INSERT INTO "T_ConfiguracionSistema" ("Clave","Valor","Tipo","Descripcion","UsuarioModificacion","FechaModificacion")
+SELECT 'whatsapp_wwebjs_url','http://localhost:3000','string','URL del servicio whatsapp-web.js','sistema',NOW()
+WHERE NOT EXISTS (SELECT 1 FROM "T_ConfiguracionSistema" WHERE "Clave" = 'whatsapp_wwebjs_url');
+
+INSERT INTO "T_ConfiguracionSistema" ("Clave","Valor","Tipo","Descripcion","UsuarioModificacion","FechaModificacion")
+SELECT 'whatsapp_baileys_url','http://localhost:3002','string','URL del servicio Baileys (WebSocket directo)','sistema',NOW()
+WHERE NOT EXISTS (SELECT 1 FROM "T_ConfiguracionSistema" WHERE "Clave" = 'whatsapp_baileys_url');
+
+INSERT INTO "T_ConfiguracionSistema" ("Clave","Valor","Tipo","Descripcion","UsuarioModificacion","FechaModificacion")
+SELECT 'whatsapp_pairing_code','','string','Codigo de emparejamiento Baileys (temporal, se renueva al solicitarlo)','sistema',NOW()
+WHERE NOT EXISTS (SELECT 1 FROM "T_ConfiguracionSistema" WHERE "Clave" = 'whatsapp_pairing_code');
+
 
 -- ============================================================
 -- VISTAS ORIGINALES

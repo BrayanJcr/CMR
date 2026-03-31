@@ -761,3 +761,26 @@ GO
 
 PRINT '>>> Script completado. Base de datos WA_Cola (SQL Server) lista.';
 GO
+
+-- =============================================
+-- Configuración de Proveedor WhatsApp
+-- =============================================
+IF NOT EXISTS (SELECT 1 FROM TConfiguracionSistema WHERE Clave = 'whatsapp_proveedor')
+    INSERT INTO TConfiguracionSistema (Clave, Valor, Tipo, Descripcion, UsuarioModificacion, FechaModificacion)
+    VALUES ('whatsapp_proveedor', 'wwebjs', 'string', 'Proveedor activo de WhatsApp: wwebjs | baileys', 'sistema', GETDATE());
+GO
+
+IF NOT EXISTS (SELECT 1 FROM TConfiguracionSistema WHERE Clave = 'whatsapp_wwebjs_url')
+    INSERT INTO TConfiguracionSistema (Clave, Valor, Tipo, Descripcion, UsuarioModificacion, FechaModificacion)
+    VALUES ('whatsapp_wwebjs_url', 'http://localhost:3000', 'string', 'URL del servicio whatsapp-web.js', 'sistema', GETDATE());
+GO
+
+IF NOT EXISTS (SELECT 1 FROM TConfiguracionSistema WHERE Clave = 'whatsapp_baileys_url')
+    INSERT INTO TConfiguracionSistema (Clave, Valor, Tipo, Descripcion, UsuarioModificacion, FechaModificacion)
+    VALUES ('whatsapp_baileys_url', 'http://localhost:3002', 'string', 'URL del servicio Baileys (WebSocket directo)', 'sistema', GETDATE());
+GO
+
+IF NOT EXISTS (SELECT 1 FROM TConfiguracionSistema WHERE Clave = 'whatsapp_pairing_code')
+    INSERT INTO TConfiguracionSistema (Clave, Valor, Tipo, Descripcion, UsuarioModificacion, FechaModificacion)
+    VALUES ('whatsapp_pairing_code', '', 'string', 'Codigo de emparejamiento Baileys (temporal, se renueva al solicitarlo)', 'sistema', GETDATE());
+GO

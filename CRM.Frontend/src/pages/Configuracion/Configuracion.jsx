@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Card, Tabs, Button, Input, Select, Form, Table, Modal, Switch, Tag,
   Space, Spin, Alert, Typography, message, Popconfirm, Badge, Row, Col,
-  Divider
+  Divider, Radio
 } from 'antd'
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined,
@@ -44,6 +44,11 @@ export default function Configuracion() {
   const [waLoading, setWaLoading] = useState(false)
   const [waClosing, setWaClosing] = useState(false)
   const [qrLoading, setQrLoading] = useState(false)
+  const [proveedor, setProveedor] = useState('wwebjs')
+  const [cargandoProveedor, setCargandoProveedor] = useState(false)
+  const [numeroPairing, setNumeroPairing] = useState('')
+  const [pairingCode, setPairingCode] = useState('')
+  const [cargandoPairing, setCargandoPairing] = useState(false)
   const autoConnectRef = useRef(false)
   const waitStatusPollRef = useRef(null)
   const [usuarios, setUsuarios] = useState([])
@@ -162,7 +167,10 @@ export default function Configuracion() {
         fetchUsuarios(),
         fetchEtapas(),
         fetchEtiquetas(),
-        fetchConfig()
+        fetchConfig(),
+        api.get('/Configuracion/whatsapp_proveedor').then(res => {
+          setProveedor(res.data?.Valor || 'wwebjs')
+        }).catch(() => {})
       ])
       setLoading(false)
     }
@@ -274,6 +282,43 @@ export default function Configuracion() {
       message.error('No se pudo obtener el QR')
     } finally {
       setQrLoading(false)
+    }
+  }
+
+  const handleCambiarProveedor = async (nuevoProveedor) => {
+    setCargandoProveedor(true)
+    try {
+      await api.post('/WhatsApp/cambiar-proveedor', { Proveedor: nuevoProveedor })
+      setProveedor(nuevoProveedor)
+      setPairingCode('')
+      setWaStatus('desconectado')
+      setWaNumero('')
+      message.success(`Proveedor cambiado a ${nuevoProveedor === 'wwebjs' ? 'WhatsApp-Web.js' : 'Baileys'}`)
+    } catch (e) {
+      message.error('Error al cambiar proveedor')
+    } finally {
+      setCargandoProveedor(false)
+    }
+  }
+
+  const handleSolicitarPairingCode = async () => {
+    if (!numeroPairing || numeroPairing.length < 10) {
+      message.warning('Ingresá un número válido con código de país (ej: 5491112345678)')
+      return
+    }
+    setCargandoPairing(true)
+    try {
+      const res = await api.get(`/WhatsApp/solicitar-pairing-code?numero=${numeroPairing}`)
+      if (res.data?.Estado) {
+        setPairingCode(res.data.Codigo)
+        message.success('Código generado. Ingresalo en WhatsApp → Dispositivos vinculados')
+      } else {
+        message.error(res.data?.Respuesta || 'Error al generar código')
+      }
+    } catch (e) {
+      message.error('Error al solicitar pairing code')
+    } finally {
+      setCargandoPairing(false)
     }
   }
 
@@ -427,6 +472,85 @@ export default function Configuracion() {
               <Card>
                 <Row gutter={24}>
                   <Col xs={24} md={12}>
+                    {/* === SELECTOR DE PROVEEDOR === */}
+                    <div style={{ marginBottom: 20 }}>
+                      <Typography.Text strong style={{ display: 'block', marginBottom: 8, fontSize: 13 }}>
+                        Proveedor de WhatsApp
+                      </Typography.Text>
+                      <Radio.Group
+                        value={proveedor}
+                        onChange={(e) => handleCambiarProveedor(e.target.value)}
+                        disabled={cargandoProveedor}
+                      >
+                        <Radio.Button value="wwebjs">
+                          <span>WhatsApp-Web.js</span>
+                        </Radio.Button>
+                        <Radio.Button value="baileys">
+                          <span>Baileys</span>
+                        </Radio.Button>
+                      </Radio.Group>
+                      <div style={{ marginTop: 6 }}>
+                        {proveedor === 'wwebjs' ? (
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                            Usa Chrome/Puppeteer. Más estable pero requiere Chrome instalado (~500MB RAM).
+                          </Typography.Text>
+                        ) : (
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                            WebSocket directo. Sin Chrome, más liviano (~50MB RAM). Soporta pairing code.
+                          </Typography.Text>
+                        )}
+                      </div>
+                    </div>
+
+                    <Divider style={{ margin: '12px 0' }} />
+
+                    {/* === PAIRING CODE (solo Baileys) === */}
+                    {proveedor === 'baileys' && (
+                      <div style={{ marginBottom: 20, padding: 12, background: '#f6ffed', borderRadius: 8, border: '1px solid #b7eb8f' }}>
+                        <Typography.Text strong style={{ display: 'block', marginBottom: 8, fontSize: 13 }}>
+                          Vincular por código (alternativa al QR)
+                        </Typography.Text>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                          <Input
+                            placeholder="Ej: 5491112345678 (sin + ni espacios)"
+                            value={numeroPairing}
+                            onChange={(e) => setNumeroPairing(e.target.value.replace(/\D/g, ''))}
+                            style={{ maxWidth: 240 }}
+                            maxLength={15}
+                          />
+                          <Button
+                            type="primary"
+                            onClick={handleSolicitarPairingCode}
+                            loading={cargandoPairing}
+                            style={{ background: '#52c41a', borderColor: '#52c41a' }}
+                          >
+                            Solicitar código
+                          </Button>
+                        </div>
+                        {pairingCode && (
+                          <div style={{ marginTop: 8 }}>
+                            <Typography.Text strong style={{ fontSize: 22, letterSpacing: 6, fontFamily: 'monospace', color: '#389e0d' }}>
+                              {pairingCode}
+                            </Typography.Text>
+                            <br />
+                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                              Abrí WhatsApp en tu celular → Configuración → Dispositivos vinculados → Vincular un dispositivo → Vincular con número de teléfono
+                            </Typography.Text>
+                            <br />
+                            <Button
+                              size="small"
+                              style={{ marginTop: 4 }}
+                              onClick={() => { navigator.clipboard.writeText(pairingCode); message.success('Código copiado') }}
+                            >
+                              Copiar código
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <Divider style={{ margin: '12px 0' }} />
+
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
                       {isConnected
                         ? <Badge status="success" text={<Text strong style={{ color: '#52c41a' }}>Conectado</Text>} />

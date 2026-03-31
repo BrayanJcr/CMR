@@ -150,7 +150,7 @@ namespace CRM.WhatsappCola.Services
                     }
                     else
                     {
-                        WaQrService waService = new WaQrService();
+                        WaQrService waService = new WaQrService(ObtenerUrlProveedorActivo());
                         WARespuestaDTO respuestaEnvio;
 
                         //validacion numero de cuenta
@@ -335,7 +335,7 @@ namespace CRM.WhatsappCola.Services
 
             try
             {
-                WaQrService waService = new WaQrService();
+                WaQrService waService = new WaQrService(ObtenerUrlProveedorActivo());
                 WARespuestaDTO respuestaEnvio;
 
                 WAInicializarDTO inicializarDTO = new WAInicializarDTO() { NumeroCuenta = "" };
@@ -363,7 +363,7 @@ namespace CRM.WhatsappCola.Services
 
             try
             {
-                WaQrService waService = new WaQrService();
+                WaQrService waService = new WaQrService(ObtenerUrlProveedorActivo());
                 WARespuestaNumeroDTO respuestaEnvio;
 
                 respuestaEnvio = waService.ObtenerNumero();
@@ -400,7 +400,7 @@ namespace CRM.WhatsappCola.Services
                     return respuesta;
                 }
 
-                WaQrService waService = new WaQrService();
+                WaQrService waService = new WaQrService(ObtenerUrlProveedorActivo());
                 WARespuestaDTO resultadoApi = waService.CerrarSesion(numeroObjetivo);
 
                 respuesta.Respuesta = resultadoApi.Mensage;
@@ -421,6 +421,15 @@ namespace CRM.WhatsappCola.Services
             }
 
             return respuesta;
+        }
+
+        private string ObtenerUrlProveedorActivo()
+        {
+            var proveedor = _db.TConfiguracionSistema
+                .FirstOrDefault(c => c.Clave == "whatsapp_proveedor")?.Valor ?? "wwebjs";
+            var urlClave = proveedor == "baileys" ? "whatsapp_baileys_url" : "whatsapp_wwebjs_url";
+            return _db.TConfiguracionSistema
+                .FirstOrDefault(c => c.Clave == urlClave)?.Valor ?? "http://localhost:3000";
         }
 
         private void ActualizarConfiguracionLocal(string clave, string valor)

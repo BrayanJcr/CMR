@@ -30,7 +30,7 @@ export default function Dashboard() {
           api.get('/Reporte/resumen'),
           api.get('/Reporte/mensajes-por-dia?dias=30'),
           api.get('/Reporte/pipeline'),
-          api.get('/Configuracion/whatsapp_estado')
+          api.get('/WhatsApp/obtenerNumero')
         ])
         if (resumenRes.status === 'fulfilled') setResumen(resumenRes.value.data)
         if (mensajesRes.status === 'fulfilled') {
@@ -64,7 +64,8 @@ export default function Dashboard() {
   }
 
   const totalPipeline = pipeline.reduce((acc, s) => acc + (s.valorTotal || s.ValorTotal || 0), 0)
-  const isConnected = waStatus === 'conectado' || waStatus === true || waStatus?.estado === 'conectado'
+  const isConnected = waStatus?.estado === true || waStatus?.Estado === true
+  const waNumero = waStatus?.numero || waStatus?.Numero || null
 
   const chartData = mensajesPorDia.map(d => ({
     fecha: formatDate(d.fecha || d.Fecha),
@@ -164,7 +165,7 @@ export default function Dashboard() {
               </Title>
               <Text type="secondary" style={{ textAlign: 'center' }}>
                 {isConnected
-                  ? 'WhatsApp funcionando correctamente'
+                  ? (waNumero ? `+${waNumero}` : 'WhatsApp funcionando correctamente')
                   : 'Ve a Configuración para conectar WhatsApp'
                 }
               </Text>

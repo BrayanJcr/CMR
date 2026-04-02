@@ -53,6 +53,9 @@ function ConversationItem({ conv, isActive, onClick, presenceEstado }) {
   const ultimoEntrante = conv.ultimoEsEntrante ?? conv.UltimoEsEntrante ?? true
   const modoBot        = (conv.modoConversacion   || conv.ModoConversacion) === 'bot'
   const ultimoAck      = conv.ultimoAckEstado     ?? conv.UltimoAckEstado ?? null
+  const estadoConv     = conv.estadoConversacion  || conv.EstadoConversacion || 'abierta'
+
+  const ESTADO_COLOR = { abierta: '#52c41a', en_progreso: '#1677ff', resuelta: '#8696a0', spam: '#ff4d4f' }
 
   const hasUnread  = unread > 0
   const isTyping   = presenceEstado === 'typing'
@@ -157,6 +160,13 @@ function ConversationItem({ conv, isActive, onClick, presenceEstado }) {
 
           {/* Badges derechos */}
           <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+            {estadoConv !== 'abierta' && (
+              <span style={{
+                width: 8, height: 8, borderRadius: '50%',
+                background: ESTADO_COLOR[estadoConv] || '#8696a0',
+                flexShrink: 0,
+              }} />
+            )}
             {modoBot && (
               <span style={{
                 background: '#00a88422', color: '#00a884', fontSize: 9,

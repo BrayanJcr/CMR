@@ -114,6 +114,16 @@ export default function ChatBaileysPage() {
     if (chatId) baileys.markSeen(chatId).catch(() => {})
   }, [])
 
+  // ── Callbacks del ContactPanel ───────────────────────────────────────────
+  const handleEstadoConvChange = useCallback((id, nuevoEstado) => {
+    setActiveConv(prev => prev ? { ...prev, estadoConversacion: nuevoEstado } : prev)
+  }, [])
+
+  const handleNombreConvChange = useCallback((id, nuevoNombre) => {
+    setActiveConv(prev => prev ? { ...prev, nombreContacto: nuevoNombre } : prev)
+    loadConversations()
+  }, [loadConversations])
+
   // ── Toggle modo bot ──────────────────────────────────────────────────
   const handleToggleModo = async (checked) => {
     if (!activeId) return
@@ -284,6 +294,7 @@ export default function ChatBaileysPage() {
     <div style={{ display: 'flex', height: '100%', background: '#111b21', overflow: 'hidden' }}>
 
       {/* ── Sidebar ── */}
+      {/* NOTE: ContactPanel is rendered inside the chat area flex container (see below) */}
       {showList && (
         <div className="baileys-sidebar">
           {/* Header sidebar */}
@@ -325,8 +336,9 @@ export default function ChatBaileysPage() {
         </div>
       )}
 
-      {/* ── Chat Area ── */}
+      {/* ── Chat Area + Contact Panel ── */}
       {showChat && (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'row', overflow: 'hidden' }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0b141a' }}>
           {activeConv ? (
             <>
@@ -353,6 +365,15 @@ export default function ChatBaileysPage() {
                     <Switch size="small" checked={modoBot} onChange={handleToggleModo} />
                   </div>
                 </Tooltip>
+                <Tooltip title="Información del contacto">
+                  <Button shape="circle" icon={<ContactsOutlined />}
+                    onClick={() => setContactPanel(p => !p)}
+                    style={{
+                      background: contactPanel ? '#00a884' : 'transparent',
+                      border: 'none',
+                      color: contactPanel ? '#fff' : '#8696a0'
+                    }} />
+                </Tooltip>
               </div>
 
               {/* Mensajes */}
@@ -375,6 +396,17 @@ export default function ChatBaileysPage() {
               <Text style={{ color: '#8696a0', fontSize: 15 }}>Seleccioná una conversación para comenzar</Text>
             </div>
           )}
+        </div>
+
+        {/* ── Panel de contacto (derecha) ── */}
+        {contactPanel && activeConv && (
+          <ContactPanel
+            conv={activeConv}
+            onEstadoChange={handleEstadoConvChange}
+            onNombreChange={handleNombreConvChange}
+            onClose={() => setContactPanel(false)}
+          />
+        )}
         </div>
       )}
 

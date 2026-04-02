@@ -217,7 +217,7 @@ namespace CRM.WhatsappCola.Services
         }
 
         /// <summary>Obtiene resultados agregados de una encuesta</summary>
-        public async Task<EncuestaResultadosDTO> ObtenerResultados(int id)
+        public async Task<EncuestaResultadosDTO?> ObtenerResultados(int id)
         {
             var encuesta = await _db.TEncuesta
                 .Include(e => e.TEncuestaPregunta.Where(p => p.Estado))
@@ -255,7 +255,7 @@ namespace CRM.WhatsappCola.Services
                     var numeros = respuestasPreg
                         .Select(v => double.TryParse(v, out double n) ? (double?)n : null)
                         .Where(n => n.HasValue)
-                        .Select(n => n.Value)
+                        .Select(n => n!.Value)
                         .ToList();
 
                     resultadoPreg.Promedio = numeros.Any() ? numeros.Average() : null;

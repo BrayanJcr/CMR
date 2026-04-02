@@ -14,10 +14,12 @@ namespace CRM.WhatsappCola.Services
     {
         private const string ConfigUsuario = "wa-recepcion";
         private WA_ColaContext _db;
+        private BotService _botService;
 
-        public WaQrRecepcionService(WA_ColaContext db)
+        public WaQrRecepcionService(WA_ColaContext db, BotService botService)
         {
             this._db = db;
+            this._botService = botService;
         }
 
         public ResultadoRecibirDTO RecepcionarMensaje(WaMensajeEntranteDTO entranteDto)
@@ -55,8 +57,59 @@ namespace CRM.WhatsappCola.Services
                     FechaCreacion = DateTime.Now,
                     FechaModificacion = DateTime.Now,
                 };
+                // Deduplicar por WhatsAppId — si ya existe el mensaje no procesar de nuevo
+                if (!string.IsNullOrEmpty(entranteDto.WhatsAppId) &&
+                    _db.TMensajeEntrante.Any(m => m.WhatsAppId == entranteDto.WhatsAppId))
+                {
+                    respuesta.Estado    = false;
+                    respuesta.Mensage   = "Mensaje duplicado";
+                    return respuesta;
+                }
+
                 _db.TMensajeEntrante.Add(mensaje);
                 _db.SaveChanges();
+
+                //upsert conversacion (con manejo de race condition)
+                var conversacion = _db.TConversacion
+                    .FirstOrDefault(c => c.NumeroCuenta == entranteDto.NumeroPara && c.NumeroCliente == entranteDto.NumeroDesde && c.Estado);
+                if (conversacion == null)
+                {
+                    var modoDefecto = _db.TConfiguracionSistema
+                        .FirstOrDefault(c => c.Clave == "bot_modo_defecto")?.Valor ?? "agente";
+
+                    conversacion = new TConversacion()
+                    {
+                        NumeroCuenta        = entranteDto.NumeroPara,
+                        NumeroCliente       = entranteDto.NumeroDesde,
+                        NombreContacto      = string.IsNullOrWhiteSpace(entranteDto.NombreContacto) ? null : entranteDto.NombreContacto,
+                        ModoConversacion    = modoDefecto,
+                        Estado              = true,
+                        UsuarioCreacion     = ConfigUsuario,
+                        UsuarioModificacion = ConfigUsuario,
+                        FechaCreacion       = DateTime.Now,
+                        FechaModificacion   = DateTime.Now
+                    };
+                    try
+                    {
+                        _db.TConversacion.Add(conversacion);
+                        _db.SaveChanges();
+                    }
+                    catch
+                    {
+                        // Race condition: otro request ya creó la conversación — volver a buscar
+                        conversacion = _db.TConversacion
+                            .FirstOrDefault(c => c.NumeroCuenta == entranteDto.NumeroPara && c.NumeroCliente == entranteDto.NumeroDesde && c.Estado)
+                            ?? conversacion;
+                    }
+                }
+                else if (string.IsNullOrEmpty(conversacion.NombreContacto) && !string.IsNullOrWhiteSpace(entranteDto.NombreContacto))
+                {
+                    conversacion.NombreContacto    = entranteDto.NombreContacto;
+                    conversacion.FechaModificacion = DateTime.Now;
+                    _db.SaveChanges();
+                }
+                string modoConversacion = conversacion.ModoConversacion ?? "agente";
+                _botService.EvaluarReglas(mensaje.Mensaje ?? string.Empty, mensaje.NumeroCliente, modoConversacion);
 
                 //envio notificacion signal
                 bool resultadoNotificacion = EnviarNotificacionMensaje_General(mensaje.NumeroCuenta, mensaje.NumeroCliente, true);
@@ -155,6 +208,9 @@ namespace CRM.WhatsappCola.Services
                     //envio notificacion signal
                     bool resultadoNotificacion = EnviarNotificacionMensaje_General(mensajeExistente.NumeroCuenta, mensajeExistente.NumeroCliente, true);
 
+                    //notificacion hub edicion
+                    ChatHub.NotificarMensajeEditado(editadoDto.WhatsAppId, editadoDto.MensajeActual, editadoDto.MensajeAnterior).Wait();
+
                     //envio de info al CRM
                     bool resultadoNotificacionCrm = EnviarNotificacionEdicionMensaje_CRM(editadoDto);
                 }
@@ -205,6 +261,9 @@ namespace CRM.WhatsappCola.Services
 
                     //envio notificacion signal
                     bool resultadoNotificacion = EnviarNotificacionMensaje_General(mensajeExistente.NumeroCuenta, mensajeExistente.NumeroCliente, true);
+
+                    //notificacion hub eliminacion
+                    ChatHub.NotificarMensajeEliminado(eliminadoDto.WhatsAppId).Wait();
 
                     //envio de info al CRM
                     bool resultadoNotificacionCrm = EnviarNotificacionEliminacionMensaje_CRM(eliminadoDto);
@@ -418,7 +477,7 @@ namespace CRM.WhatsappCola.Services
                 }
 
                 HubContextHolder.ChatContext?.Clients.All
-                    .SendAsync("AckActualizado", dto.WhatsAppId, dto.AckEstado)
+                    .SendAsync("AckActualizado", new { whatsAppId = dto.WhatsAppId, ack = dto.AckEstado })
                     .Wait();
 
                 return new { success = true };
@@ -445,7 +504,7 @@ namespace CRM.WhatsappCola.Services
                 _db.SaveChanges();
 
                 HubContextHolder.ChatContext?.Clients.All
-                    .SendAsync("NuevaReaccion", dto.WhatsAppId, dto.Emoji, dto.SenderId)
+                    .SendAsync("NuevaReaccion", new { whatsAppId = dto.WhatsAppId, emoji = dto.Emoji, senderId = dto.SenderId })
                     .Wait();
 
                 return new { success = true };
@@ -474,6 +533,9 @@ namespace CRM.WhatsappCola.Services
                 _db.TGrupoEvento.Add(evento);
                 _db.SaveChanges();
 
+                // notificacion hub grupo evento
+                ChatHub.NotificarGrupoEvento(dto.ChatId, dto.Tipo, dto.Author ?? string.Empty).Wait();
+
                 return new { success = true };
             }
             catch (Exception ex)
@@ -486,15 +548,39 @@ namespace CRM.WhatsappCola.Services
         {
             try
             {
-                HubContextHolder.ChatContext?.Clients.All
-                    .SendAsync("LlamadaEntrante", dto.From, dto.IsVideo)
-                    .Wait();
+                // guardar llamada entrante
+                var llamada = new TLlamadaEntrante
+                {
+                    CallId = dto.CallId ?? string.Empty,
+                    NumeroDesde = dto.From ?? string.Empty,
+                    EsVideo = dto.IsVideo,
+                    FechaLlamada = DateTime.Now,
+                    Estado = true
+                };
+                _db.TLlamadaEntrante.Add(llamada);
+                _db.SaveChanges();
+
+                // notificacion hub
+                ChatHub.NotificarLlamada(dto.CallId ?? string.Empty, dto.From ?? string.Empty, dto.IsVideo).Wait();
 
                 return Task.FromResult<object>(new { success = true });
             }
             catch (Exception ex)
             {
                 return Task.FromResult<object>(new { success = false, error = ex.Message });
+            }
+        }
+
+        public object RecepcionarPresencia(string numero, string presencia)
+        {
+            try
+            {
+                ChatHub.NotificarPresenciaActualizada(numero, presencia).Wait();
+                return new { success = true };
+            }
+            catch (Exception ex)
+            {
+                return new { success = false, error = ex.Message };
             }
         }
 

@@ -5,7 +5,7 @@ import {
   ProjectOutlined, CalendarOutlined, ShoppingOutlined, FileTextOutlined,
   SendOutlined, FormOutlined, BarChartOutlined, SettingOutlined,
   LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, WifiOutlined,
-  DisconnectOutlined
+  DisconnectOutlined, RobotOutlined
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -18,7 +18,7 @@ const { Text } = Typography
 
 const PAGE_TITLES = {
   '/': 'Dashboard',
-  '/chat': 'Chat',
+  '/chat-baileys': 'Chat Baileys',
   '/contactos': 'Contactos',
   '/empresas': 'Empresas',
   '/pipeline': 'Pipeline',
@@ -35,7 +35,7 @@ export default function AppLayout({ children }) {
   const [collapsed, setCollapsed]         = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isMobile, setIsMobile]           = useState(false)
-  const [waStatus, setWaStatus]           = useState(null)
+  const [baileysStatus, setBaileysStatus] = useState(null)
   const { user, logout }                  = useAuth()
   const navigate                          = useNavigate()
   const location                          = useLocation()
@@ -52,19 +52,24 @@ export default function AppLayout({ children }) {
   }, [])
 
   useEffect(() => {
-    api.get('/Configuracion/whatsapp_estado')
-      .then(res => setWaStatus(res.data))
-      .catch(() => setWaStatus(null))
+    api.get('/WhatsApp/baileys/status')
+      .then(res => setBaileysStatus(res.data?.estado ?? res.data?.Estado))
+      .catch(() => setBaileysStatus('desconectado'))
   }, [])
 
-  useHubConnection('/hub-qr', {
-    NuevoNumero: () => setWaStatus('conectado'),
-    NuevoQr:    () => setWaStatus('iniciando')
-  })
+  // Refrescar estado Baileys periódicamente (cada 30s)
+  useEffect(() => {
+    const t = setInterval(() => {
+      api.get('/WhatsApp/baileys/status')
+        .then(res => setBaileysStatus(res.data?.estado ?? res.data?.Estado))
+        .catch(() => {})
+    }, 30000)
+    return () => clearInterval(t)
+  }, [])
 
   const menuItems = [
     { key: '/',             icon: <DashboardOutlined />, label: 'Dashboard' },
-    { key: '/chat',         icon: <MessageOutlined />,   label: 'Chat' },
+    { key: '/chat-baileys', icon: <RobotOutlined />,     label: 'Chat Baileys' },
     { key: '/contactos',    icon: <UserOutlined />,      label: 'Contactos' },
     { key: '/empresas',     icon: <BankOutlined />,      label: 'Empresas' },
     { key: '/pipeline',     icon: <ProjectOutlined />,   label: 'Pipeline' },
@@ -86,9 +91,7 @@ export default function AppLayout({ children }) {
     }
   ]
 
-  const isConnected = waStatus === 'conectado' || waStatus === true
-    || waStatus?.valor === 'conectado' || waStatus?.Valor === 'conectado'
-    || waStatus?.estado === 'conectado' || waStatus?.Estado === 'conectado'
+  const isBaileysConnected = baileysStatus === 'conectado'
 
   const handleMenuClick = ({ key }) => {
     navigate(key)
@@ -206,15 +209,17 @@ export default function AppLayout({ children }) {
           </Space>
           <Space size={isMobile ? 8 : 16}>
             {!isMobile && (
-              <Space size={6}>
-                {isConnected
-                  ? <Badge status="success" text={<Text type="success" style={{ fontSize: 12 }}>WhatsApp Conectado</Text>} />
-                  : <Badge status="error"   text={<Text type="danger"  style={{ fontSize: 12 }}>WhatsApp Desconectado</Text>} />
-                }
+              <Space size={12}>
+                <Badge status={isBaileysConnected ? 'success' : 'error'}
+                  text={<Text style={{ fontSize: 12, color: isBaileysConnected ? '#52c41a' : '#ff4d4f' }}>
+                    Baileys {isBaileysConnected ? '●' : '○'}
+                  </Text>} />
               </Space>
             )}
             {isMobile && (
-              <Badge status={isConnected ? 'success' : 'error'} />
+              <Space size={4}>
+                <Badge status={isBaileysConnected ? 'success' : 'error'} />
+              </Space>
             )}
             <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
               <Avatar
@@ -228,9 +233,10 @@ export default function AppLayout({ children }) {
         </Header>
 
         <Content style={{
-          padding: isMobile ? 12 : 24,
-          background: '#f5f5f5',
-          minHeight: `calc(100vh - ${headerHeight}px)`
+          padding: currentPath === '/chat-baileys' ? 0 : (isMobile ? 12 : 24),
+          background: currentPath === '/chat-baileys' ? '#111b21' : '#f5f5f5',
+          height: `calc(100vh - ${headerHeight}px)`,
+          overflow: 'hidden'
         }}>
           {children}
         </Content>

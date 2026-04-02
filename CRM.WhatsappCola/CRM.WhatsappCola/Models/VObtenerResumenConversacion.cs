@@ -14,4 +14,17 @@ public partial class VObtenerResumenConversacion
     public DateTime? FechaUltimoMensaje { get; set; }
 
     public string NombreContacto { get; set; }
+
+    public string UltimoMensaje { get; set; }
+
+    public string UltimoMimeType { get; set; }
+
+    /// <summary>1 = entrante (del cliente), 0 = saliente (enviado por nosotros)</summary>
+    public int? UltimoEsEntrante { get; set; }
+
+    /// <summary>ACK del último mensaje saliente: 0=pendiente, 1=enviado, 2=entregado, 3=leído, 4=reproducido</summary>
+    public int? UltimoAckEstado { get; set; }
+
+    /// <summary>Mensajes entrantes recibidos después del último mensaje saliente (sin responder)</summary>
+    public int? MensajesNoLeidos { get; set; }
 }

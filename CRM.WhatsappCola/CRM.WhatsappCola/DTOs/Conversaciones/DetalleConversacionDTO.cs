@@ -26,6 +26,8 @@
 
         public string Error { get; set; }
 
+        public int? AckEstado { get; set; }
+
         //adjuntos
         public string MimeType { get; set; }
         public string AdjuntoBase64 { get; set; }

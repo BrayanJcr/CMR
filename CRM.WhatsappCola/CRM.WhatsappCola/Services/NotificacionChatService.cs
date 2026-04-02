@@ -11,13 +11,23 @@ namespace CRM.WhatsappCola.Services
         {
             try
             {
-                HubContextHolder.ChatContext?.Clients.All
-                    .SendAsync("NuevoMensaje", JsonConvert.SerializeObject(notificacion))
+                if (HubContextHolder.ChatContext == null)
+                {
+                    Console.WriteLine("[SignalR] ❌ ChatContext es NULL - no se puede enviar notificación");
+                    return false;
+                }
+
+                var json = JsonConvert.SerializeObject(notificacion);
+                Console.WriteLine($"[SignalR] 📤 Enviando NuevoMensaje: {json}");
+                HubContextHolder.ChatContext.Clients.All
+                    .SendAsync("NuevoMensaje", json)
                     .Wait();
+                Console.WriteLine("[SignalR] ✅ NuevoMensaje enviado correctamente");
                 return true;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Console.WriteLine($"[SignalR] ❌ Error enviando NuevoMensaje: {ex.Message}");
                 return false;
             }
         }

@@ -46,4 +46,24 @@ public partial class TConversacion
     /// Fecha de modificacion del registro
     /// </summary>
     public DateTime FechaModificacion { get; set; }
+
+    /// <summary>
+    /// Modo de conversacion: "agente" o "bot"
+    /// </summary>
+    public string ModoConversacion { get; set; } = "agente";
+
+    /// <summary>
+    /// Nombre del contacto de WhatsApp (obtenido de mensajes entrantes o Baileys store)
+    /// </summary>
+    public string? NombreContacto { get; set; }
+
+    /// <summary>
+    /// Estado del proceso de la conversación: abierta | en_progreso | resuelta | spam
+    /// </summary>
+    public string EstadoConversacion { get; set; } = "abierta";
+
+    /// <summary>
+    /// Nota interna sobre la conversación (visible solo para el equipo)
+    /// </summary>
+    public string? Nota { get; set; }
 }

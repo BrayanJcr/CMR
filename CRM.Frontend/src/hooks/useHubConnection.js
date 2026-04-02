@@ -23,9 +23,13 @@ export default function useHubConnection(hubUrl, handlers) {
       connection.on(event, (...args) => handlersRef.current[event]?.(...args))
     })
 
-    connection.start().catch(err =>
-      console.warn(`[SignalR] No se pudo conectar a ${hubUrl}:`, err?.message)
-    )
+    connection.onreconnecting(() => console.warn(`[SignalR] Reconectando a ${hubUrl}...`))
+    connection.onreconnected(() => console.log(`[SignalR] ✅ Reconectado a ${hubUrl}`))
+    connection.onclose(() => console.warn(`[SignalR] ❌ Conexión cerrada: ${hubUrl}`))
+
+    connection.start()
+      .then(() => console.log(`[SignalR] ✅ Conectado a ${hubUrl}`))
+      .catch(err => console.error(`[SignalR] ❌ No se pudo conectar a ${hubUrl}:`, err?.message))
 
     return () => { connection.stop() }
   }, [hubUrl]) // solo se reconecta si cambia la URL

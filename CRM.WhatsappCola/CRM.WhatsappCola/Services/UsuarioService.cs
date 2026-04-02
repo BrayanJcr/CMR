@@ -35,7 +35,7 @@ namespace CRM.WhatsappCola.Services
             }
             catch (Exception ex)
             {
-                throw ex;
+                throw;
             }
         }
 
@@ -48,7 +48,7 @@ namespace CRM.WhatsappCola.Services
             }
             catch (Exception ex)
             {
-                throw ex;
+                throw;
             }
         }
 
@@ -64,7 +64,7 @@ namespace CRM.WhatsappCola.Services
             }
             catch (Exception ex)
             {
-                throw ex;
+                throw;
             }
         }
 
@@ -94,7 +94,7 @@ namespace CRM.WhatsappCola.Services
             }
             catch (Exception ex)
             {
-                throw ex;
+                throw;
             }
         }
 
@@ -132,7 +132,7 @@ namespace CRM.WhatsappCola.Services
             }
             catch (Exception ex)
             {
-                throw ex;
+                throw;
             }
         }
     }

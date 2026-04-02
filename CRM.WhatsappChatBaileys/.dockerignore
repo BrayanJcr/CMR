@@ -1,0 +1,8 @@
+node_modules
+sesiones-baileys
+.env
+*.log
+.git
+.gitignore
+docker-compose.yml
+Dockerfile

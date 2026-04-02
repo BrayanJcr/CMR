@@ -252,13 +252,19 @@ export default function ChatPage() {
         fetchConversations()
       } catch { }
     },
-    AckActualizado: (whatsAppId, ackEstado) => {
-      setAckMap(prev => ({ ...prev, [whatsAppId]: ackEstado }))
+    AckActualizado: (payload) => {
+      const waId = payload?.whatsAppId || payload?.WhatsAppId
+      const ackVal = payload?.ack ?? payload?.Ack
+      if (waId !== undefined && ackVal !== undefined)
+        setAckMap(prev => ({ ...prev, [waId]: ackVal }))
     },
-    NuevaReaccion: (whatsAppId, emoji, senderId) => {
-      setReactions(prev => ({
+    NuevaReaccion: (payload) => {
+      const waId = payload?.whatsAppId || payload?.WhatsAppId
+      const emoji = payload?.emoji
+      const senderId = payload?.senderId
+      if (waId) setReactions(prev => ({
         ...prev,
-        [whatsAppId]: [...(prev[whatsAppId] || []), { emoji, senderId }]
+        [waId]: [...(prev[waId] || []), { emoji, senderId }]
       }))
     },
     LlamadaEntrante: (from, isVideo) => {
@@ -460,7 +466,7 @@ export default function ChatPage() {
     const whatsAppId = msg.WhatsAppId || msg.whatsAppId || msg.Id || msg.id || idx
     const whatsAppTipo = (msg.WhatsAppTipo || msg.whatsAppTipo || '').toLowerCase()
 
-    const ack = ackMap[whatsAppId] ?? (msg.AckEstado ?? msg.ackEstado ?? (isIncoming ? null : 1))
+    const ack = ackMap[whatsAppId] ?? (msg.AckEstado ?? msg.ackEstado ?? null)
 
     const msgReactions = reactions[whatsAppId] || []
 

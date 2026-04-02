@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Card, Tabs, Button, Input, Select, Form, Table, Modal, Switch, Tag,
-  Space, Spin, Alert, Typography, message, Popconfirm, Badge, Row, Col,
-  Divider, Radio
+  Space, Spin, Alert, Typography, App, Popconfirm, Badge, Row, Col,
+  Divider
 } from 'antd'
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined,
@@ -14,6 +14,8 @@ const { Title, Text } = Typography
 const { Option } = Select
 
 export default function Configuracion() {
+  const { message, modal } = App.useApp()
+
   // Botón global para limpiar sesión y reiniciar Node
   const limpiarYReiniciarNodeBtn = (
     <Button
@@ -28,7 +30,7 @@ export default function Configuracion() {
         } catch (err) {
           result = err?.response ? `Status: ${err.response.status}\n${JSON.stringify(err.response.data, null, 2)}` : String(err)
         }
-        Modal.info({
+        modal.info({
           title: 'Resultado limpieza y reinicio Node',
           content: <pre style={{ whiteSpace: 'pre-wrap' }}>{result}</pre>,
           width: 600
@@ -50,6 +52,18 @@ export default function Configuracion() {
   const [pairingCode, setPairingCode] = useState('')
   const [cargandoPairing, setCargandoPairing] = useState(false)
   const autoConnectRef = useRef(false)
+
+  // ── Estado Baileys (independiente) ─────────────────────────────────────
+  const [bStatus,          setBStatus]          = useState(null)
+  const [bNumero,          setBNumero]          = useState(null)
+  const [bQr,              setBQr]              = useState(null)
+  const [bLoading,         setBLoading]         = useState(false)
+  const [bClosing,         setBClosing]         = useState(false)
+  const [bNumeroPairing,   setBNumeroPairing]   = useState('')
+  const [bPairingCode,     setBPairingCode]     = useState('')
+  const [bCargandoPairing, setBCargandoPairing] = useState(false)
+  const bAutoConnectRef = useRef(false)
+  const bQrPollRef      = useRef(null)
   const waitStatusPollRef = useRef(null)
   const [usuarios, setUsuarios] = useState([])
   const [etapas, setEtapas] = useState([])
@@ -251,7 +265,7 @@ export default function Configuracion() {
   }, [isConnected, waLoading])
 
   const handleCerrarSesion = () => {
-    Modal.confirm({
+    modal.confirm({
       title: 'Cerrar sesión de WhatsApp',
       content: 'Esto desconectará el cliente actual y requerirá escanear un nuevo QR.',
       okText: 'Cerrar sesión',
@@ -321,6 +335,134 @@ export default function Configuracion() {
       setCargandoPairing(false)
     }
   }
+
+  // ── Handlers Baileys ──────────────────────────────────────────────────
+  const fetchBaileysStatus = useCallback(async () => {
+    try {
+      const res = await api.get('/WhatsApp/baileys/status')
+      const estado = res.data?.estado ?? res.data?.Estado ?? 'desconectado'
+      const numero = res.data?.numero ?? res.data?.Numero ?? null
+      setBStatus(estado)
+      setBNumero(numero || null)
+      return estado
+    } catch {
+      setBStatus('desconectado')
+      return 'desconectado'
+    }
+  }, [])
+
+  const fetchBaileysQr = useCallback(async () => {
+    try {
+      const res = await api.get('/Configuracion/whatsapp_qr')
+      const val = res.data?.valor ?? res.data?.Valor ?? res.data?.qr ?? res.data ?? null
+      setBQr(typeof val === 'string' && val ? val : null)
+      return val
+    } catch {
+      setBQr(null)
+    }
+  }, [])
+
+  const stopBaileysQrPoll = () => {
+    if (bQrPollRef.current) { clearInterval(bQrPollRef.current); bQrPollRef.current = null }
+  }
+
+  const handleBaileysConectar = async () => {
+    setBLoading(true)
+    setBQr(null)
+    stopBaileysQrPoll()
+    try {
+      await api.post('/WhatsApp/baileys/iniciar')
+      message.info('Iniciando Baileys... el QR aparecerá en segundos')
+      // Polling QR + estado cada 3s hasta conectado (máx 2 min)
+      let intentos = 0
+      bQrPollRef.current = setInterval(async () => {
+        intentos++
+        const st = await fetchBaileysStatus()
+        await fetchBaileysQr()
+        if (st === 'conectado') {
+          stopBaileysQrPoll()
+          setBQr(null)
+        }
+        if (intentos >= 40) stopBaileysQrPoll()
+      }, 3000)
+    } catch {
+      message.error('Error al iniciar Baileys')
+    } finally {
+      setBLoading(false)
+    }
+  }
+
+  const handleBaileysLogout = () => {
+    modal.confirm({
+      title: 'Cerrar sesión Baileys',
+      content: 'Esto desconectará el cliente Baileys.',
+      okText: 'Cerrar sesión', cancelText: 'Cancelar', centered: true,
+      onOk: async () => {
+        setBClosing(true)
+        stopBaileysQrPoll()
+        setBQr(null)
+        try {
+          await api.post('/WhatsApp/baileys/cerrar-sesion')
+          message.success('Sesión Baileys cerrada')
+          setBNumero(null)
+          await fetchBaileysStatus()
+        } catch {
+          message.error('Error al cerrar sesión Baileys')
+        } finally {
+          setBClosing(false)
+        }
+      }
+    })
+  }
+
+  const handleBaileysLimpiarSesion = () => {
+    modal.confirm({
+      title: 'Limpiar sesión Baileys',
+      content: 'Esto borrará las credenciales guardadas y reseteará el cliente. Usá esto si la conexión entró en loop o el QR no funciona.',
+      okText: 'Limpiar', cancelText: 'Cancelar', centered: true, okButtonProps: { danger: true },
+      onOk: async () => {
+        stopBaileysQrPoll()
+        setBQr(null); setBNumero(null); setBPairingCode('')
+        try {
+          await api.delete('/WhatsApp/baileys/limpiar-sesion')
+          message.success('Sesión limpiada. Podés conectar de nuevo.')
+          await fetchBaileysStatus()
+        } catch {
+          message.error('Error al limpiar sesión Baileys')
+        }
+      }
+    })
+  }
+
+  const handleBaileysPairingCode = async () => {
+    if (!bNumeroPairing || bNumeroPairing.length < 10) {
+      message.warning('Ingresá un número válido con código de país (ej: 5491112345678)')
+      return
+    }
+    setBCargandoPairing(true)
+    try {
+      // Primero inicializar (necesario para que Baileys acepte el pairing request)
+      await api.post(`/WhatsApp/baileys/iniciar?phoneNumber=${bNumeroPairing}`)
+      // Pequeño delay para que el socket arranque
+      await new Promise(r => setTimeout(r, 3000))
+      const res = await api.get(`/WhatsApp/baileys/pairing-code?numero=${bNumeroPairing}`)
+      if (res.data?.Estado) {
+        setBPairingCode(res.data.Codigo)
+        message.success('Código generado. Ingresalo en WhatsApp → Dispositivos vinculados')
+      } else {
+        message.error(res.data?.Respuesta || 'Error al generar código')
+      }
+    } catch {
+      message.error('Error al solicitar pairing code Baileys')
+    } finally {
+      setBCargandoPairing(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchBaileysStatus()
+    return () => stopBaileysQrPoll()
+  }, [])
 
   const handleSaveConfig = async (key, value) => {
     try {
@@ -470,199 +612,114 @@ export default function Configuracion() {
             label: 'WhatsApp',
             children: (
               <Card>
-                <Row gutter={24}>
-                  <Col xs={24} md={12}>
-                    {/* === SELECTOR DE PROVEEDOR === */}
-                    <div style={{ marginBottom: 20 }}>
-                      <Typography.Text strong style={{ display: 'block', marginBottom: 8, fontSize: 13 }}>
-                        Proveedor de WhatsApp
-                      </Typography.Text>
-                      <Radio.Group
-                        value={proveedor}
-                        onChange={(e) => handleCambiarProveedor(e.target.value)}
-                        disabled={cargandoProveedor}
-                      >
-                        <Radio.Button value="wwebjs">
-                          <span>WhatsApp-Web.js</span>
-                        </Radio.Button>
-                        <Radio.Button value="baileys">
-                          <span>Baileys</span>
-                        </Radio.Button>
-                      </Radio.Group>
-                      <div style={{ marginTop: 6 }}>
-                        {proveedor === 'wwebjs' ? (
-                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                            Usa Chrome/Puppeteer. Más estable pero requiere Chrome instalado (~500MB RAM).
-                          </Typography.Text>
-                        ) : (
-                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                            WebSocket directo. Sin Chrome, más liviano (~50MB RAM). Soporta pairing code.
-                          </Typography.Text>
-                        )}
-                      </div>
-                    </div>
-
-                    <Divider style={{ margin: '12px 0' }} />
-
-                    {/* === PAIRING CODE (solo Baileys) === */}
-                    {proveedor === 'baileys' && (
-                      <div style={{ marginBottom: 20, padding: 12, background: '#f6ffed', borderRadius: 8, border: '1px solid #b7eb8f' }}>
-                        <Typography.Text strong style={{ display: 'block', marginBottom: 8, fontSize: 13 }}>
-                          Vincular por código (alternativa al QR)
-                        </Typography.Text>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                          <Input
-                            placeholder="Ej: 5491112345678 (sin + ni espacios)"
-                            value={numeroPairing}
-                            onChange={(e) => setNumeroPairing(e.target.value.replace(/\D/g, ''))}
-                            style={{ maxWidth: 240 }}
-                            maxLength={15}
+                <Tabs
+                  type="card"
+                  items={[
+                    {
+                      key: 'baileys',
+                      label: (
+                        <Space>
+                          <span>Chat Baileys</span>
+                          <Tag color="green" style={{ margin: 0 }}>WebSocket · :3002</Tag>
+                          <Badge status={bStatus === 'conectado' ? 'success' : bLoading ? 'processing' : 'error'} />
+                        </Space>
+                      ),
+                      children: (
+                        <div>
+                          <Alert
+                            type="success"
+                            showIcon
+                            style={{ marginBottom: 16 }}
+                            message="Endpoints: /api/WhatsApp/baileys/iniciar · /api/WhatsApp/baileys/cerrar-sesion · /api/WhatsApp/baileys/status · /api/WhatsApp/baileys/pairing-code"
+                            description="WebSocket directo a :3002. Sin Chrome, ~50MB RAM. Soporta QR y pairing code."
                           />
-                          <Button
-                            type="primary"
-                            onClick={handleSolicitarPairingCode}
-                            loading={cargandoPairing}
-                            style={{ background: '#52c41a', borderColor: '#52c41a' }}
-                          >
-                            Solicitar código
-                          </Button>
-                        </div>
-                        {pairingCode && (
-                          <div style={{ marginTop: 8 }}>
-                            <Typography.Text strong style={{ fontSize: 22, letterSpacing: 6, fontFamily: 'monospace', color: '#389e0d' }}>
-                              {pairingCode}
-                            </Typography.Text>
-                            <br />
-                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                              Abrí WhatsApp en tu celular → Configuración → Dispositivos vinculados → Vincular un dispositivo → Vincular con número de teléfono
-                            </Typography.Text>
-                            <br />
-                            <Button
-                              size="small"
-                              style={{ marginTop: 4 }}
-                              onClick={() => { navigator.clipboard.writeText(pairingCode); message.success('Código copiado') }}
-                            >
-                              Copiar código
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                            {bStatus === 'conectado'
+                              ? <Badge status="success" text={<Text strong style={{ color: '#52c41a' }}>Conectado</Text>} />
+                              : bLoading
+                                ? <Badge status="processing" text={<Text strong style={{ color: '#1677ff' }}>Iniciando...</Text>} />
+                                : <Badge status="error" text={<Text strong style={{ color: '#ff4d4f' }}>Desconectado</Text>} />
+                            }
+                            {bNumero && <Text type="secondary">Número: <Text strong>{bNumero}</Text></Text>}
+                          </div>
+
+                          <Space wrap style={{ marginBottom: 20 }}>
+                            <Button type="primary" icon={<WifiOutlined />} onClick={handleBaileysConectar}
+                              loading={bLoading} disabled={bStatus === 'conectado' || bClosing}
+                              style={bStatus !== 'conectado' ? { background: '#52c41a', borderColor: '#52c41a' } : {}}>
+                              {bStatus === 'conectado' ? 'Conectado' : 'Conectar (QR)'}
                             </Button>
+                            <Button icon={<ReloadOutlined />} onClick={async () => { await fetchBaileysStatus(); await fetchBaileysQr() }}>
+                              Actualizar estado
+                            </Button>
+                            <Button danger icon={<DisconnectOutlined />} onClick={handleBaileysLogout}
+                              disabled={bClosing || bStatus !== 'conectado'} loading={bClosing}>
+                              Cerrar sesión
+                            </Button>
+                            <Button icon={<DeleteOutlined />} onClick={handleBaileysLimpiarSesion}
+                              disabled={bLoading || bClosing}>
+                              Limpiar sesión
+                            </Button>
+                          </Space>
+
+                          {bQr && (
+                            <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                              <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+                                Escanea este QR con tu WhatsApp
+                              </Text>
+                              {typeof bQr === 'string' && bQr.startsWith('data:') ? (
+                                <img src={bQr} alt="QR Baileys" style={{ maxWidth: 240, border: '1px solid #f0f0f0', borderRadius: 8 }} />
+                              ) : (
+                                <div style={{ padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
+                                  <Text code style={{ wordBreak: 'break-all', fontSize: 10 }}>{bQr}</Text>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <Divider>Vincular por código (alternativa al QR)</Divider>
+
+                          <div style={{ padding: 16, background: '#f6ffed', borderRadius: 8, border: '1px solid #b7eb8f', maxWidth: 500 }}>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                              <Input
+                                placeholder="Ej: 5491112345678 (sin + ni espacios)"
+                                value={bNumeroPairing}
+                                onChange={e => setBNumeroPairing(e.target.value.replace(/\D/g, ''))}
+                                style={{ maxWidth: 240 }}
+                                maxLength={15}
+                              />
+                              <Button type="primary" onClick={handleBaileysPairingCode} loading={bCargandoPairing}
+                                style={{ background: '#52c41a', borderColor: '#52c41a' }}>
+                                Solicitar código
+                              </Button>
+                            </div>
+                            {bPairingCode ? (
+                              <div>
+                                <Typography.Text strong style={{ fontSize: 28, letterSpacing: 8, fontFamily: 'monospace', color: '#389e0d' }}>
+                                  {bPairingCode}
+                                </Typography.Text>
+                                <br />
+                                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                                  WhatsApp → Configuración → Dispositivos vinculados → Vincular con número de teléfono
+                                </Typography.Text>
+                                <br />
+                                <Button size="small" style={{ marginTop: 6 }}
+                                  onClick={() => { navigator.clipboard.writeText(bPairingCode); message.success('Código copiado') }}>
+                                  Copiar código
+                                </Button>
+                              </div>
+                            ) : (
+                              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                                Ingresá el número con código de país y solicitá el código de vinculación.
+                              </Typography.Text>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    )}
-
-                    <Divider style={{ margin: '12px 0' }} />
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-                      {isConnected
-                        ? <Badge status="success" text={<Text strong style={{ color: '#52c41a' }}>Conectado</Text>} />
-                        : isStarting
-                          ? <Badge status="processing" text={<Text strong style={{ color: '#1677ff' }}>Iniciando...</Text>} />
-                          : <Badge status="error" text={<Text strong style={{ color: '#ff4d4f' }}>Desconectado</Text>} />
-                      }
-                    </div>
-
-                    {waNumero && (
-                      <div style={{ marginBottom: 16 }}>
-                        <Text type="secondary">Número activo: </Text>
-                        <Text strong>{waNumero}</Text>
-                      </div>
-                    )}
-
-                    <Space wrap>
-                      <Button
-                        type="primary"
-                        icon={<WifiOutlined />}
-                        onClick={handleConectar}
-                        loading={waLoading || isStarting}
-                        disabled={isConnected || waClosing}
-                      >
-                        {isConnected ? 'Conectado' : 'Conectar WhatsApp'}
-                      </Button>
-                      <Button
-                        icon={<ReloadOutlined />}
-                        onClick={async () => {
-                          await fetchWaStatus()
-                          await fetchWaNumero()
-                        }}
-                      >
-                        Actualizar estado
-                      </Button>
-                      <Button
-                        icon={<QrcodeOutlined />}
-                        onClick={handleRefreshQr}
-                        disabled={isConnected}
-                        loading={qrLoading}
-                      >
-                        Obtener QR
-                      </Button>
-                      <Button
-                        danger
-                        icon={<DisconnectOutlined />}
-                        onClick={handleCerrarSesion}
-                        disabled={waClosing || (!isConnected && !waNumero)}
-                        loading={waClosing}
-                      >
-                        Cerrar sesión
-                      </Button>
-                      <Button
-                        danger
-                        style={{ marginLeft: 8 }}
-                        onClick={async () => {
-                          let result = ''
-                          try {
-                            const resp = await api.post('/WhatsApp/cerrar-sesion', { numero: waNumero })
-                            result = `Status: ${resp.status}\n${JSON.stringify(resp.data, null, 2)}`
-                            await fetchWaStatus()
-                            await fetchWaQr()
-                          } catch (err) {
-                            result = err?.response ? `Status: ${err.response.status}\n${JSON.stringify(err.response.data, null, 2)}` : String(err)
-                          }
-                          Modal.info({
-                            title: 'Resultado cerrar-sesion',
-                            content: <pre style={{ whiteSpace: 'pre-wrap' }}>{result}</pre>,
-                            width: 600
-                          })
-                        }}
-                      >
-                        Forzar cerrar sesión
-                      </Button>
-                      <Button
-                        style={{ marginLeft: 8 }}
-                        onClick={async () => {
-                          let result = ''
-                          try {
-                            const resp = await api.post('/WhatsApp/iniciar-cliente')
-                            result = `Status: ${resp.status}\n${JSON.stringify(resp.data, null, 2)}`
-                          } catch (err) {
-                            result = err?.response ? `Status: ${err.response.status}\n${JSON.stringify(err.response.data, null, 2)}` : String(err)
-                          }
-                          Modal.info({
-                            title: 'Resultado iniciar-cliente',
-                            content: <pre style={{ whiteSpace: 'pre-wrap' }}>{result}</pre>,
-                            width: 600
-                          })
-                        }}
-                      >
-                        Test iniciar-cliente
-                      </Button>
-                    </Space>
-                  </Col>
-                  {waQr && (
-                    <Col xs={24} md={12}>
-                      <div style={{ textAlign: 'center' }}>
-                        <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-                          Escanea este código QR con tu WhatsApp
-                        </Text>
-                        {typeof waQr === 'string' && waQr.startsWith('data:') ? (
-                          <img src={waQr} alt="QR WhatsApp" style={{ maxWidth: 240, border: '1px solid #f0f0f0', borderRadius: 8 }} />
-                        ) : (
-                          <div style={{ padding: 20, background: '#f5f5f5', borderRadius: 8 }}>
-                            <Text code style={{ wordBreak: 'break-all', fontSize: 10 }}>{waQr || 'QR no disponible'}</Text>
-                          </div>
-                        )}
-                      </div>
-                    </Col>
-                  )}
-                </Row>
+                        </div>
+                      )
+                    }
+                  ]}
+                />
               </Card>
             )
           },
@@ -876,7 +933,7 @@ export default function Configuracion() {
         confirmLoading={savingUser}
         okText="Guardar"
         cancelText="Cancelar"
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={userForm} layout="vertical" style={{ marginTop: 16 }}>
           <Row gutter={16}>
@@ -920,7 +977,7 @@ export default function Configuracion() {
         confirmLoading={savingEtapa}
         okText="Guardar"
         cancelText="Cancelar"
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={etapaForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item label="Nombre" name="nombre" rules={[{ required: true }]}>
@@ -943,7 +1000,7 @@ export default function Configuracion() {
         confirmLoading={savingEtiqueta}
         okText="Guardar"
         cancelText="Cancelar"
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={etiquetaForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item label="Nombre" name="nombre" rules={[{ required: true }]}>

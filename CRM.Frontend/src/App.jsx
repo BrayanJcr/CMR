@@ -5,7 +5,7 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import AppLayout from './components/AppLayout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
-import ChatPage from './pages/Chat/ChatPage'
+import ChatBaileysPage from './pages/ChatBaileys/ChatBaileysPage'
 import ContactosList from './pages/Contactos/ContactosList'
 import ContactoDetalle from './pages/Contactos/ContactoDetalle'
 import EmpresasList from './pages/Empresas/EmpresasList'
@@ -58,8 +58,8 @@ function AppRoutes() {
             <AppLayout>
               <Routes>
                 <Route path="/" element={<Dashboard />} />
-                <Route path="/chat" element={<ChatPage />} />
-                <Route path="/chat/:id" element={<ChatPage />} />
+                <Route path="/chat-baileys" element={<ChatBaileysPage />} />
+                <Route path="/chat-baileys/:id" element={<ChatBaileysPage />} />
                 <Route path="/contactos" element={<ContactosList />} />
                 <Route path="/contactos/:id" element={<ContactoDetalle />} />
                 <Route path="/empresas" element={<EmpresasList />} />

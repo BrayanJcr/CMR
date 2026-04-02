@@ -141,4 +141,24 @@ public partial class TMensajeEntrante
     public string NombreContacto { get; set; }
 
     public virtual TMensajeEntranteEstado IdMensajeEntranteEstadoNavigation { get; set; }
+
+    /// <summary>
+    /// Indica si el mensaje fue editado
+    /// </summary>
+    public bool? EsEditado { get; set; }
+
+    /// <summary>
+    /// Texto original del mensaje antes de la edición
+    /// </summary>
+    public string? MensajeOriginal { get; set; }
+
+    /// <summary>
+    /// Indica si el mensaje es efímero
+    /// </summary>
+    public bool? EsEfimero { get; set; }
+
+    /// <summary>
+    /// Fecha de expiración del mensaje efímero
+    /// </summary>
+    public DateTime? EfimeroExpiracion { get; set; }
 }

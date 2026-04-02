@@ -764,3 +764,101 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
   }
 }
 
+/* ============================================
+   ChatBaileys — Estilos específicos
+   ============================================ */
+
+/* Inputs dentro de modales/drawers dark de Baileys */
+.baileys-modal-input .ant-input::placeholder,
+.baileys-modal-input input::placeholder {
+  color: #8696a0 !important;
+}
+.baileys-modal-input .ant-input {
+  background: transparent !important;
+  color: #e9edef !important;
+}
+.baileys-modal-textarea::placeholder {
+  color: #8696a0 !important;
+}
+
+/* Ítem de conversación */
+.baileys-conv-item {
+  transition: background 0.15s;
+}
+.baileys-conv-item:not(.baileys-conv-active):hover {
+  background: #1a2730 !important;
+}
+.baileys-conv-item.baileys-conv-active {
+  border-left: 3px solid #00a884;
+  padding-left: 11px !important; /* compensa el borde de 3px */
+}
+
+/* Sidebar responsivo */
+.baileys-sidebar {
+  flex-shrink: 0;
+  border-right: 1px solid #2a3942;
+  display: flex;
+  flex-direction: column;
+  width: 360px;
+}
+
+/* Search input — placeholder visible en fondo oscuro */
+.baileys-search-input .ant-input::placeholder,
+.baileys-search-input input::placeholder {
+  color: #8696a0 !important;
+}
+.baileys-search-input .ant-input {
+  background: transparent !important;
+  color: #e9edef !important;
+}
+
+/* Textarea de mensajes — placeholder visible en fondo oscuro */
+.baileys-msg-textarea::placeholder {
+  color: #8696a0 !important;
+}
+
+/* Phone input en BaileysConnect — placeholder visible */
+.baileys-phone-input .ant-input::placeholder,
+.baileys-phone-input input::placeholder {
+  color: #8696a0 !important;
+}
+.baileys-phone-input .ant-input {
+  color: #e9edef !important;
+  background: transparent !important;
+}
+
+/* Burbujas de mensaje */
+.baileys-bubble {
+  max-width: 65%;
+}
+
+/* Scrollbar oscuro */
+.baileys-scroll::-webkit-scrollbar { width: 6px; }
+.baileys-scroll::-webkit-scrollbar-track { background: transparent; }
+.baileys-scroll::-webkit-scrollbar-thumb { background: #3b4a54; border-radius: 3px; }
+
+/* --- Tablet (768–1100px) --- */
+@media (min-width: 768px) and (max-width: 1100px) {
+  .baileys-sidebar {
+    width: 280px;
+  }
+  .baileys-bubble {
+    max-width: 76% !important;
+  }
+}
+
+/* --- Mobile (<768px) --- */
+@media (max-width: 767px) {
+  .baileys-sidebar {
+    width: 100%;
+    border-right: none;
+  }
+  .baileys-bubble {
+    max-width: 88% !important;
+  }
+  .baileys-connect-inner {
+    max-width: 100% !important;
+    padding: 0 4px !important;
+  }
+}
+

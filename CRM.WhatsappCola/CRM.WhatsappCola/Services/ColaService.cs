@@ -455,11 +455,11 @@ namespace CRM.WhatsappCola.Services
                     NumeroCliente = numeroCliente,
                     EsEntrante = esEntrante
                 };
-                string payload = null;
+                string? payload = null;
                 bool resultado = servicioNotificacion.EnviarNotificacion_NuevoMensajeGeneral(notificacion, payload);
                 return resultado;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return false;
             }

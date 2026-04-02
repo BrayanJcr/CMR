@@ -18,75 +18,80 @@ namespace CRM.WhatsappCola.Controllers
             _db = db;
         }
 
+        private WaQrRecepcionService CrearRecepcionService()
+        {
+            var baileysProxy = new BaileysProxyService(_db);
+            var botService = new BotService(_db, baileysProxy);
+            return new WaQrRecepcionService(_db, botService);
+        }
+
         [HttpPost("recepcionar"), DisableRequestSizeLimit]
         public async Task<IActionResult> Recepcionar([FromBody] WaMensajeEntranteDTO entranteDto)
         {
-            var recepcionService = new WaQrRecepcionService(_db);
-            ResultadoRecibirDTO resultado = recepcionService.RecepcionarMensaje(entranteDto);
+            ResultadoRecibirDTO resultado = CrearRecepcionService().RecepcionarMensaje(entranteDto);
             return Ok(resultado);
         }
 
         [HttpPost("recepcionar-edicion"), DisableRequestSizeLimit]
         public async Task<IActionResult> RecepcionarEdicion([FromBody] WaMensajeEditadoDTO editadoDto)
         {
-            var recepcionService = new WaQrRecepcionService(_db);
-            ResultadoRecibirDTO resultado = recepcionService.RecepcionarEdicion(editadoDto);
+            ResultadoRecibirDTO resultado = CrearRecepcionService().RecepcionarEdicion(editadoDto);
             return Ok(resultado);
         }
 
         [HttpPost("recepcionar-eliminacion"), DisableRequestSizeLimit]
         public async Task<IActionResult> RecepcionarEliminacion([FromBody] WaMensajeEliminadoDTO eliminadoDto)
         {
-            var recepcionService = new WaQrRecepcionService(_db);
-            ResultadoRecibirDTO resultado = recepcionService.RecepcionarEliminacion(eliminadoDto);
+            ResultadoRecibirDTO resultado = CrearRecepcionService().RecepcionarEliminacion(eliminadoDto);
             return Ok(resultado);
         }
 
         [HttpPost("recepcionar-qr")]
         public async Task<IActionResult> RecepcionarQr([FromBody] WaMensajeQrEntranteDTO qrDto)
         {
-            var recepcionService = new WaQrRecepcionService(_db);
-            ResultadoRecibirQrDTO resultado = recepcionService.RecepcionarQr(qrDto);
+            ResultadoRecibirQrDTO resultado = CrearRecepcionService().RecepcionarQr(qrDto);
             return Ok(resultado);
         }
 
         [HttpPost("recepcionar-numero")]
         public async Task<IActionResult> RecepcionarNumero([FromBody] WaMensajeNumeroEntranteDTO numeroDto)
         {
-            var recepcionService = new WaQrRecepcionService(_db);
-            ResultadoRecibirNumeroDTO resultado = recepcionService.RecepcionarNumero(numeroDto);
+            ResultadoRecibirNumeroDTO resultado = CrearRecepcionService().RecepcionarNumero(numeroDto);
             return Ok(resultado);
         }
 
         [HttpPost("recepcionar-ack")]
         public async Task<IActionResult> RecepcionarAck([FromBody] WaAckDTO dto)
         {
-            var service = new WaQrRecepcionService(_db);
-            var resultado = await service.RecepcionarAck(dto);
+            var resultado = await CrearRecepcionService().RecepcionarAck(dto);
             return Ok(resultado);
         }
 
         [HttpPost("recepcionar-reaccion")]
         public async Task<IActionResult> RecepcionarReaccion([FromBody] WaReaccionDTO dto)
         {
-            var service = new WaQrRecepcionService(_db);
-            var resultado = await service.RecepcionarReaccion(dto);
+            var resultado = await CrearRecepcionService().RecepcionarReaccion(dto);
             return Ok(resultado);
         }
 
         [HttpPost("recepcionar-grupo-evento")]
         public async Task<IActionResult> RecepcionarGrupoEvento([FromBody] WaGrupoEventoDTO dto)
         {
-            var service = new WaQrRecepcionService(_db);
-            var resultado = await service.RecepcionarGrupoEvento(dto);
+            var resultado = await CrearRecepcionService().RecepcionarGrupoEvento(dto);
             return Ok(resultado);
         }
 
         [HttpPost("recepcionar-llamada")]
         public async Task<IActionResult> RecepcionarLlamada([FromBody] WaLlamadaDTO dto)
         {
-            var service = new WaQrRecepcionService(_db);
-            var resultado = await service.RecepcionarLlamada(dto);
+            var resultado = await CrearRecepcionService().RecepcionarLlamada(dto);
+            return Ok(resultado);
+        }
+
+        [HttpPost("recepcionar-presencia")]
+        public IActionResult RecepcionarPresencia([FromBody] WaPresenciaDTO dto)
+        {
+            var resultado = CrearRecepcionService().RecepcionarPresencia(dto.Numero, dto.Presencia);
             return Ok(resultado);
         }
     }

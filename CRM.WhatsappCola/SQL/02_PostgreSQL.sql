@@ -72,8 +72,8 @@ CREATE TABLE IF NOT EXISTS "T_Usuario" (
 
 CREATE TABLE IF NOT EXISTS "T_Conversacion" (
     "Id"                   SERIAL        PRIMARY KEY,
-    "NumeroCuenta"         VARCHAR(12)   NOT NULL,
-    "NumeroCliente"        VARCHAR(12)   NOT NULL,
+    "NumeroCuenta"         VARCHAR(50)   NOT NULL,
+    "NumeroCliente"        VARCHAR(50)   NOT NULL,
     "Estado"               BOOLEAN       NOT NULL DEFAULT TRUE,
     "UsuarioCreacion"      VARCHAR(50)   NOT NULL,
     "UsuarioModificacion"  VARCHAR(50)   NOT NULL,
@@ -84,8 +84,8 @@ CREATE TABLE IF NOT EXISTS "T_Conversacion" (
 CREATE TABLE IF NOT EXISTS "T_MensajeCola" (
     "Id"                   SERIAL        PRIMARY KEY,
     "IdMensajeColaEstado"  INTEGER       NOT NULL REFERENCES "T_MensajeColaEstado"("Id"),
-    "NumeroRemitente"      VARCHAR(30)   NOT NULL,
-    "NumeroDestino"        VARCHAR(30)   NOT NULL,
+    "NumeroRemitente"      VARCHAR(50)   NOT NULL,
+    "NumeroDestino"        VARCHAR(50)   NOT NULL,
     "Mensaje"              TEXT          NULL,
     "AdjuntoBase64"        TEXT          NULL,
     "NombreArchivo"        VARCHAR(1024) NULL,
@@ -106,9 +106,9 @@ CREATE TABLE IF NOT EXISTS "T_MensajeCola" (
 CREATE TABLE IF NOT EXISTS "T_MensajeEntrante" (
     "Id"                          SERIAL        PRIMARY KEY,
     "IdMensajeEntranteEstado"     INTEGER       NOT NULL REFERENCES "T_MensajeEntranteEstado"("Id"),
-    "NumeroCuenta"                VARCHAR(12)   NOT NULL,
-    "NumeroCliente"               VARCHAR(12)   NOT NULL,
-    "WhatsAppTipo"                VARCHAR(15)   NULL,
+    "NumeroCuenta"                VARCHAR(50)   NOT NULL,
+    "NumeroCliente"               VARCHAR(50)   NOT NULL,
+    "WhatsAppTipo"                VARCHAR(50)   NULL,
     "WhatsAppId"                  VARCHAR(50)   NULL,
     "FechaEnvio"                  TIMESTAMP     NOT NULL,
     "Mensaje"                     TEXT          NULL,
@@ -470,7 +470,7 @@ CREATE TABLE IF NOT EXISTS "T_MensajeReaccion" (
     "Id"            SERIAL        NOT NULL CONSTRAINT "PK_T_MensajeReaccion" PRIMARY KEY,
     "WhatsAppId"    VARCHAR(50)   NOT NULL,
     "Emoji"         VARCHAR(10)   NOT NULL,
-    "SenderId"      VARCHAR(30)   NOT NULL,
+    "SenderId"      VARCHAR(50)   NOT NULL,
     "FechaReaccion" TIMESTAMP     NOT NULL,
     "Estado"        BOOLEAN       NOT NULL DEFAULT TRUE
 );
@@ -479,7 +479,7 @@ CREATE TABLE IF NOT EXISTS "T_GrupoEvento" (
     "Id"          SERIAL        NOT NULL CONSTRAINT "PK_T_GrupoEvento" PRIMARY KEY,
     "ChatId"      VARCHAR(50)   NOT NULL,
     "Tipo"        VARCHAR(30)   NOT NULL,
-    "Author"      VARCHAR(30)   NOT NULL,
+    "Author"      VARCHAR(50)   NOT NULL,
     "Recipients"  TEXT          NULL,
     "FechaEvento" TIMESTAMP     NOT NULL,
     "Estado"      BOOLEAN       NOT NULL DEFAULT TRUE
@@ -544,6 +544,10 @@ INSERT INTO "T_ConfiguracionSistema" ("Clave","Valor","Tipo","Descripcion","Usua
 SELECT 'whatsapp_pairing_code','','string','Codigo de emparejamiento Baileys (temporal, se renueva al solicitarlo)','sistema',NOW()
 WHERE NOT EXISTS (SELECT 1 FROM "T_ConfiguracionSistema" WHERE "Clave" = 'whatsapp_pairing_code');
 
+INSERT INTO "T_ConfiguracionSistema" ("Clave","Valor","Tipo","Descripcion","UsuarioModificacion","FechaModificacion")
+SELECT 'bot_modo_defecto','agente','string','Modo por defecto para nuevas conversaciones: agente | bot','sistema',NOW()
+WHERE NOT EXISTS (SELECT 1 FROM "T_ConfiguracionSistema" WHERE "Clave" = 'bot_modo_defecto');
+
 
 -- ============================================================
 -- VISTAS ORIGINALES
@@ -592,21 +596,156 @@ SELECT
 FROM "T_MensajeEntrante" me
 WHERE me."Estado" = TRUE;
 
-CREATE OR REPLACE VIEW "V_Obtener_ResumenConversacion" AS
+DROP VIEW IF EXISTS "V_Obtener_ResumenConversacion";
+CREATE VIEW "V_Obtener_ResumenConversacion" AS
+WITH todos AS (
+    SELECT "NumeroCuenta", "NumeroCliente", "FechaEnvio", "Mensaje", "MimeType",
+           1 AS "EsEntrante", NULL::INTEGER AS "AckEstado"
+    FROM "T_MensajeEntrante" WHERE "Estado" = TRUE
+    UNION ALL
+    SELECT "NumeroRemitente", "NumeroDestino", "FechaEnvio", "Mensaje", "MimeType",
+           0, "AckEstado"
+    FROM "T_MensajeCola" WHERE "Estado" = TRUE
+),
+ultimo AS (
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY "NumeroCuenta", "NumeroCliente" ORDER BY "FechaEnvio" DESC) AS rn
+    FROM todos
+)
 SELECT
-    me."NumeroCuenta",
-    me."NumeroCliente",
-    MAX(me."FechaEnvio") AS "FechaUltimoMensaje",
+    u."NumeroCuenta",
+    u."NumeroCliente",
+    u."FechaEnvio"    AS "FechaUltimoMensaje",
+    u."Mensaje"       AS "UltimoMensaje",
+    u."MimeType"      AS "UltimoMimeType",
+    u."EsEntrante"    AS "UltimoEsEntrante",
+    u."AckEstado"     AS "UltimoAckEstado",
+    (
+        SELECT COUNT(*)::INTEGER
+        FROM "T_MensajeEntrante" me3
+        WHERE me3."NumeroCuenta" = u."NumeroCuenta"
+          AND me3."NumeroCliente" = u."NumeroCliente"
+          AND me3."Estado" = TRUE
+          AND me3."FechaEnvio" > COALESCE(
+            (SELECT MAX(mc."FechaEnvio")
+             FROM "T_MensajeCola" mc
+             WHERE mc."NumeroRemitente" = u."NumeroCuenta"
+               AND mc."NumeroDestino"   = u."NumeroCliente"
+               AND mc."Estado" = TRUE),
+            '1970-01-01'::TIMESTAMP
+          )
+    ) AS "MensajesNoLeidos",
     COALESCE(
         (SELECT me2."NombreContacto"
          FROM "T_MensajeEntrante" me2
-         WHERE me2."NumeroCuenta"    = me."NumeroCuenta"
-           AND me2."NumeroCliente"   = me."NumeroCliente"
+         WHERE me2."NumeroCuenta"    = u."NumeroCuenta"
+           AND me2."NumeroCliente"   = u."NumeroCliente"
            AND me2."NombreContacto"  IS NOT NULL
            AND me2."Estado"          = TRUE
          ORDER BY me2."FechaEnvio" DESC LIMIT 1),
-        me."NumeroCliente"
+        u."NumeroCliente"
     ) AS "NombreContacto"
-FROM "T_MensajeEntrante" me
-WHERE me."Estado" = TRUE
-GROUP BY me."NumeroCuenta", me."NumeroCliente";
+FROM ultimo u
+WHERE u.rn = 1;
+
+-- ============================================================
+-- PARTE 5: BAILEYS CHAT COMPLETO
+-- ============================================================
+
+-- T_BotRegla: reglas del chatbot autoresponder
+CREATE TABLE IF NOT EXISTS "T_BotRegla" (
+    "Id"                   SERIAL        PRIMARY KEY,
+    "Nombre"               VARCHAR(256)  NOT NULL,
+    "Patron"               VARCHAR(512)  NOT NULL,
+    "Respuesta"            TEXT          NOT NULL,
+    "TipoAccion"           VARCHAR(30)   NOT NULL DEFAULT 'respuesta_texto',
+    "Prioridad"            INT           NOT NULL DEFAULT 100,
+    "EsActivo"             BOOLEAN       NOT NULL DEFAULT TRUE,
+    "Estado"               BOOLEAN       NOT NULL DEFAULT TRUE,
+    "UsuarioCreacion"      VARCHAR(50)   NOT NULL,
+    "UsuarioModificacion"  VARCHAR(50)   NOT NULL,
+    "FechaCreacion"        TIMESTAMP     NOT NULL DEFAULT NOW(),
+    "FechaModificacion"    TIMESTAMP     NOT NULL DEFAULT NOW()
+);
+
+-- T_LlamadaEntrante: log de llamadas (rechazadas automáticamente por Baileys)
+CREATE TABLE IF NOT EXISTS "T_LlamadaEntrante" (
+    "Id"           SERIAL       PRIMARY KEY,
+    "CallId"       VARCHAR(100) NOT NULL,
+    "NumeroDesde"  VARCHAR(50)  NOT NULL,
+    "EsVideo"      BOOLEAN      NOT NULL DEFAULT FALSE,
+    "FechaLlamada" TIMESTAMP    NOT NULL DEFAULT NOW(),
+    "Estado"       BOOLEAN      NOT NULL DEFAULT TRUE
+);
+
+-- T_MensajeEntrante: columnas para edición y mensajes efímeros
+ALTER TABLE "T_MensajeEntrante" ADD COLUMN IF NOT EXISTS "EsEditado"           BOOLEAN   DEFAULT FALSE;
+ALTER TABLE "T_MensajeEntrante" ADD COLUMN IF NOT EXISTS "MensajeOriginal"     TEXT;
+ALTER TABLE "T_MensajeEntrante" ADD COLUMN IF NOT EXISTS "EsEfimero"           BOOLEAN   DEFAULT FALSE;
+ALTER TABLE "T_MensajeEntrante" ADD COLUMN IF NOT EXISTS "EfimeroExpiracion"   TIMESTAMP;
+
+-- T_Conversacion: modo bot/agente por conversación
+ALTER TABLE "T_Conversacion" ADD COLUMN IF NOT EXISTS "ModoConversacion"  VARCHAR(10)  NOT NULL DEFAULT 'agente';
+
+-- T_Conversacion: nombre del contacto
+ALTER TABLE "T_Conversacion" ADD COLUMN IF NOT EXISTS "NombreContacto"   VARCHAR(256) NULL;
+
+-- Ampliar NumeroCuenta/NumeroCliente a VARCHAR(50) (Baileys multi-device usa números largos)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'T_Conversacion' AND column_name = 'NumeroCuenta'
+               AND character_maximum_length < 50) THEN
+    ALTER TABLE "T_Conversacion"
+      ALTER COLUMN "NumeroCuenta"  TYPE VARCHAR(50),
+      ALTER COLUMN "NumeroCliente" TYPE VARCHAR(50);
+    RAISE NOTICE 'T_Conversacion: NumeroCuenta/NumeroCliente ampliadas a VARCHAR(50).';
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'T_MensajeEntrante' AND column_name = 'NumeroCuenta'
+               AND character_maximum_length < 50) THEN
+    ALTER TABLE "T_MensajeEntrante"
+      ALTER COLUMN "NumeroCuenta"  TYPE VARCHAR(50),
+      ALTER COLUMN "NumeroCliente" TYPE VARCHAR(50);
+    RAISE NOTICE 'T_MensajeEntrante: NumeroCuenta/NumeroCliente ampliadas a VARCHAR(50).';
+  END IF;
+
+  -- T_MensajeCola: NumeroRemitente/NumeroDestino
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'T_MensajeCola' AND column_name = 'NumeroRemitente'
+               AND character_maximum_length < 50
+  ) THEN
+    ALTER TABLE "T_MensajeCola"
+      ALTER COLUMN "NumeroRemitente" TYPE VARCHAR(50),
+      ALTER COLUMN "NumeroDestino"   TYPE VARCHAR(50);
+    RAISE NOTICE 'T_MensajeCola: NumeroRemitente/NumeroDestino ampliadas a VARCHAR(50).';
+  END IF;
+
+  -- T_MensajeEntrante: WhatsAppTipo
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'T_MensajeEntrante' AND column_name = 'WhatsAppTipo'
+               AND character_maximum_length < 50
+  ) THEN
+    ALTER TABLE "T_MensajeEntrante"
+      ALTER COLUMN "WhatsAppTipo" TYPE VARCHAR(50);
+    RAISE NOTICE 'T_MensajeEntrante: WhatsAppTipo ampliada a VARCHAR(50).';
+  END IF;
+END $$;
+-- =============================================
+-- Parte 1: Panel de contacto + Estados
+-- =============================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'TConversacion' AND column_name = 'EstadoConversacion') THEN
+    ALTER TABLE "TConversacion" ADD COLUMN "EstadoConversacion" VARCHAR(20) NOT NULL DEFAULT 'abierta';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'TConversacion' AND column_name = 'Nota') THEN
+    ALTER TABLE "TConversacion" ADD COLUMN "Nota" TEXT NULL;
+  END IF;
+END $$;

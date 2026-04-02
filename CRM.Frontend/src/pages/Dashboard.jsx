@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Row, Col, Card, Statistic, Spin, Alert, Badge, Typography, Space } from 'antd'
 import {
-  MessageOutlined, UserOutlined, RiseOutlined, DollarOutlined,
-  WifiOutlined, DisconnectOutlined
+  MessageOutlined, UserOutlined, RiseOutlined, DollarOutlined
 } from '@ant-design/icons'
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -17,7 +16,6 @@ export default function Dashboard() {
   const [resumen, setResumen] = useState(null)
   const [mensajesPorDia, setMensajesPorDia] = useState([])
   const [pipeline, setPipeline] = useState([])
-  const [waStatus, setWaStatus] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -26,11 +24,10 @@ export default function Dashboard() {
       setLoading(true)
       setError(null)
       try {
-        const [resumenRes, mensajesRes, pipelineRes, statusRes] = await Promise.allSettled([
+        const [resumenRes, mensajesRes, pipelineRes] = await Promise.allSettled([
           api.get('/Reporte/resumen'),
           api.get('/Reporte/mensajes-por-dia?dias=30'),
-          api.get('/Reporte/pipeline'),
-          api.get('/WhatsApp/obtenerNumero')
+          api.get('/Reporte/pipeline')
         ])
         if (resumenRes.status === 'fulfilled') setResumen(resumenRes.value.data)
         if (mensajesRes.status === 'fulfilled') {
@@ -41,7 +38,6 @@ export default function Dashboard() {
           const data = pipelineRes.value.data
           setPipeline(Array.isArray(data) ? data : [])
         }
-        if (statusRes.status === 'fulfilled') setWaStatus(statusRes.value.data)
       } catch (err) {
         setError('Error al cargar el dashboard')
       } finally {
@@ -64,8 +60,6 @@ export default function Dashboard() {
   }
 
   const totalPipeline = pipeline.reduce((acc, s) => acc + (s.valorTotal || s.ValorTotal || 0), 0)
-  const isConnected = waStatus?.estado === true || waStatus?.Estado === true
-  const waNumero = waStatus?.numero || waStatus?.Numero || null
 
   const chartData = mensajesPorDia.map(d => ({
     fecha: formatDate(d.fecha || d.Fecha),
@@ -126,7 +120,7 @@ export default function Dashboard() {
       </Row>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} xl={16}>
+        <Col xs={24}>
           <Card title="Mensajes últimos 30 días" styles={{ body: { padding: '16px 8px' } }}>
             {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height={260}>
@@ -143,33 +137,6 @@ export default function Dashboard() {
             ) : (
               <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>Sin datos disponibles</div>
             )}
-          </Card>
-        </Col>
-        <Col xs={24} xl={8}>
-          <Card title="Estado WhatsApp" style={{ height: '100%' }}>
-            <Space direction="vertical" align="center" style={{ width: '100%', padding: '20px 0' }}>
-              <div style={{
-                width: 80, height: 80,
-                borderRadius: '50%',
-                background: isConnected ? '#f6ffed' : '#fff2f0',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                border: `3px solid ${isConnected ? '#52c41a' : '#ff4d4f'}`
-              }}>
-                {isConnected
-                  ? <WifiOutlined style={{ fontSize: 36, color: '#52c41a' }} />
-                  : <DisconnectOutlined style={{ fontSize: 36, color: '#ff4d4f' }} />
-                }
-              </div>
-              <Title level={4} style={{ margin: 0, color: isConnected ? '#52c41a' : '#ff4d4f' }}>
-                {isConnected ? 'Conectado' : 'Desconectado'}
-              </Title>
-              <Text type="secondary" style={{ textAlign: 'center' }}>
-                {isConnected
-                  ? (waNumero ? `+${waNumero}` : 'WhatsApp funcionando correctamente')
-                  : 'Ve a Configuración para conectar WhatsApp'
-                }
-              </Text>
-            </Space>
           </Card>
         </Col>
       </Row>

@@ -2,6 +2,7 @@ using CRM.WhatsappCola.DTOs.CRM;
 using CRM.WhatsappCola.Models;
 using CRM.WhatsappCola.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Threading.Tasks;
 
@@ -37,6 +38,33 @@ namespace CRM.WhatsappCola.Controllers
             {
                 return BadRequest(ex.Message + (ex.InnerException != null ? " - " + ex.InnerException.Message : ""));
             }
+        }
+
+        /// <summary>Busca un contacto por número de WhatsApp</summary>
+        [HttpGet("por-numero")]
+        public IActionResult GetByNumero([FromQuery] string numero)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(numero)) return BadRequest("Número requerido");
+                var contacto = _db.TContacto
+                    .Include(c => c.TContactoEtiqueta)
+                    .Include(c => c.IdEmpresaNavigation)
+                    .FirstOrDefault(c => c.NumeroWhatsApp == numero && c.Estado);
+                if (contacto == null) return NotFound(new { encontrado = false });
+                return Ok(new
+                {
+                    id       = contacto.Id,
+                    nombres  = contacto.Nombres,
+                    apellidos= contacto.Apellidos,
+                    email    = contacto.Email,
+                    cargo    = contacto.Cargo,
+                    empresa  = contacto.IdEmpresaNavigation?.Nombre,
+                    notas    = contacto.Notas,
+                    etiquetas= contacto.TContactoEtiqueta.Select(e => new { e.IdEtiquetaNavigation?.Nombre, e.IdEtiquetaNavigation?.Color })
+                });
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
         }
 
         /// <summary>Obtiene un contacto por Id</summary>

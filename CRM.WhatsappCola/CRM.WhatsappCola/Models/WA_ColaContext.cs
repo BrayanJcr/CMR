@@ -51,12 +51,12 @@ public partial class WA_ColaContext : DbContext
                 .HasColumnType("timestamp without time zone");
             entity.Property(e => e.NumeroCliente)
                 .IsRequired()
-                .HasMaxLength(12)
+                .HasMaxLength(50)
                 .IsUnicode(false)
                 .HasComment("Numero del cliente");
             entity.Property(e => e.NumeroCuenta)
                 .IsRequired()
-                .HasMaxLength(12)
+                .HasMaxLength(50)
                 .IsUnicode(false)
                 .HasComment("Numero de la cuenta de whatsaap");
             entity.Property(e => e.UsuarioCreacion)
@@ -69,6 +69,10 @@ public partial class WA_ColaContext : DbContext
                 .HasMaxLength(50)
                 .IsUnicode(false)
                 .HasComment("Usuario de modificacion del registro");
+            entity.Property(e => e.NombreContacto)
+                .HasMaxLength(256)
+                .IsUnicode(false)
+                .HasComment("Nombre del contacto de WhatsApp");
         });
 
         modelBuilder.Entity<TMensajeCola>(entity =>
@@ -100,12 +104,12 @@ public partial class WA_ColaContext : DbContext
             entity.Property(e => e.NroByte).HasComment("Nro. de bytes del archivo adjunto");
             entity.Property(e => e.NumeroDestino)
                 .IsRequired()
-                .HasMaxLength(30)
+                .HasMaxLength(50)
                 .IsUnicode(false)
                 .HasComment("Número del Cliente");
             entity.Property(e => e.NumeroRemitente)
                 .IsRequired()
-                .HasMaxLength(30)
+                .HasMaxLength(50)
                 .IsUnicode(false)
                 .HasComment("Número de la Cuenta de Whatsapp");
             entity.Property(e => e.UrlArchivo)
@@ -200,12 +204,12 @@ public partial class WA_ColaContext : DbContext
             entity.Property(e => e.NroByte).HasComment("Nro. de Bytes del archivo adjunto");
             entity.Property(e => e.NumeroCliente)
                 .IsRequired()
-                .HasMaxLength(12)
+                .HasMaxLength(50)
                 .IsUnicode(false)
                 .HasComment("Numero del cliente");
             entity.Property(e => e.NumeroCuenta)
                 .IsRequired()
-                .HasMaxLength(12)
+                .HasMaxLength(50)
                 .IsUnicode(false)
                 .HasComment("Numero de la cuenta de whatsaap");
             entity.Property(e => e.TieneAdjunto).HasComment("Indica si el mensaje tiene adjuntos");
@@ -229,7 +233,7 @@ public partial class WA_ColaContext : DbContext
                 .IsUnicode(false)
                 .HasComment("Identificador del mensaje padre en WhatsApp");
             entity.Property(e => e.WhatsAppTipo)
-                .HasMaxLength(15)
+                .HasMaxLength(50)
                 .IsUnicode(false)
                 .HasComment("Tipo de mensaje en WhatsApp");
 
@@ -359,11 +363,11 @@ public partial class WA_ColaContext : DbContext
             entity.Property(e => e.NombreArchivo).HasMaxLength(500);
             entity.Property(e => e.NumeroCliente)
                 .IsRequired()
-                .HasMaxLength(12)
+                .HasMaxLength(50)
                 .IsUnicode(false);
             entity.Property(e => e.NumeroCuenta)
                 .IsRequired()
-                .HasMaxLength(12)
+                .HasMaxLength(50)
                 .IsUnicode(false);
             entity.Property(e => e.WhatsAppId)
                 .HasMaxLength(50)
@@ -387,12 +391,15 @@ public partial class WA_ColaContext : DbContext
                 .IsUnicode(false);
             entity.Property(e => e.NumeroCliente)
                 .IsRequired()
-                .HasMaxLength(12)
+                .HasMaxLength(50)
                 .IsUnicode(false);
             entity.Property(e => e.NumeroCuenta)
                 .IsRequired()
-                .HasMaxLength(12)
+                .HasMaxLength(50)
                 .IsUnicode(false);
+            entity.Property(e => e.UltimoMensaje).IsRequired(false).HasMaxLength(4000);
+            entity.Property(e => e.UltimoMimeType).IsRequired(false).HasMaxLength(256);
+            entity.Property(e => e.UltimoEsEntrante).IsRequired(false);
         });
 
         modelBuilder.Entity<TMensajeReaccion>(entity =>

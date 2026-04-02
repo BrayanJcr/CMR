@@ -26,6 +26,8 @@ public partial class WA_ColaContext
     public virtual DbSet<TEncuestaEnvio> TEncuestaEnvio { get; set; }
     public virtual DbSet<TEncuestaRespuesta> TEncuestaRespuesta { get; set; }
     public virtual DbSet<TConfiguracionSistema> TConfiguracionSistema { get; set; }
+    public virtual DbSet<TBotRegla> TBotRegla { get; set; }
+    public virtual DbSet<TLlamadaEntrante> TLlamadaEntrante { get; set; }
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder)
     {
@@ -283,6 +285,30 @@ public partial class WA_ColaContext
             entity.Property(e => e.Tipo).HasMaxLength(20).IsUnicode(false).HasDefaultValue("string");
             entity.Property(e => e.UsuarioModificacion).IsRequired().HasMaxLength(50).IsUnicode(false);
             entity.Property(e => e.FechaModificacion).HasColumnType("timestamp without time zone");
+        });
+
+        // T_BotRegla
+        modelBuilder.Entity<TBotRegla>(entity =>
+        {
+            entity.ToTable("T_BotRegla");
+            entity.Property(e => e.Nombre).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.Patron).IsRequired();
+            entity.Property(e => e.Respuesta).IsRequired();
+            entity.Property(e => e.TipoAccion).HasMaxLength(50).IsUnicode(false).HasDefaultValue("respuesta_texto");
+            entity.Property(e => e.Prioridad).HasDefaultValue(100);
+            entity.Property(e => e.UsuarioCreacion).IsRequired().HasMaxLength(50).IsUnicode(false);
+            entity.Property(e => e.UsuarioModificacion).IsRequired().HasMaxLength(50).IsUnicode(false);
+            entity.Property(e => e.FechaCreacion).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.FechaModificacion).HasColumnType("timestamp without time zone");
+        });
+
+        // T_LlamadaEntrante
+        modelBuilder.Entity<TLlamadaEntrante>(entity =>
+        {
+            entity.ToTable("T_LlamadaEntrante");
+            entity.Property(e => e.CallId).IsRequired().HasMaxLength(100).IsUnicode(false);
+            entity.Property(e => e.NumeroDesde).IsRequired().HasMaxLength(30).IsUnicode(false);
+            entity.Property(e => e.FechaLlamada).HasColumnType("timestamp without time zone");
         });
     }
 }

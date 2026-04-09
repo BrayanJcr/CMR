@@ -12,6 +12,7 @@ const os = require('os')
 const instanceAxios = axios.create({
     httpsAgent: new https.Agent({ rejectUnauthorized: false })
 })
+const MEDIA_TIMEOUT_MS = 15_000
 const header = { headers: { 'content-type': 'text/json' } }
 
 async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
@@ -52,24 +53,19 @@ class ClientBaileys {
         // para el mismo mensaje (reconexión, history sync). Limpiar cada 10 min.
         this._processedIds = new Set()
         setInterval(() => this._processedIds.clear(), 10 * 60 * 1000)
+        // Persistencia del mapa LID→PN
+        this._lidMapPath = path.join('sesiones-baileys', 'lid-map.json')
+        this._loadLidMap()
     }
 
     // Resuelve un LID al número de teléfono real
-    // 1. Busca en el mapa propio (poblado por contacts.upsert/update)
-    // 2. Hace reverse lookup en store.contacts buscando quien tiene ese lid
-    // 3. Si no encuentra nada, devuelve el LID tal cual
+    // 1. Busca en el mapa propio (poblado por fuentes confiables: contacts.upsert/update, chats.phoneNumberShare, altJid)
+    // 2. Hace reverse lookup en store.contacts (campo .lid — fuente confiable)
+    // 3. Si no encuentra nada, devuelve el LID tal cual → va a _lidPending
     resolveLid(lid) {
         if (this._lidMap.has(lid)) return this._lidMap.get(lid)
 
-        // 1. Buscar en store.chats — el chat @lid suele tener pnJid desde el sync inicial
-        const chatEntry = store.chats[lid + '@lid']
-        if (chatEntry?.pnJid) {
-            const phone = chatEntry.pnJid.split('@')[0]
-            this._registrarLid(lid, phone)
-            return phone
-        }
-
-        // 2. Reverse lookup en store.contacts (contacts @s.whatsapp.net con campo lid)
+        // Reverse lookup en store.contacts (contacts @s.whatsapp.net con campo lid)
         for (const [jid, contact] of Object.entries(store.contacts || {})) {
             if (!jid.endsWith('@s.whatsapp.net')) continue
             const contactLid = (contact?.lid || '').split('@')[0]
@@ -80,13 +76,36 @@ class ClientBaileys {
             }
         }
 
-        return lid // desconocido — devolver el LID como fallback
+        return lid // desconocido — va a _lidPending
+    }
+
+    _loadLidMap() {
+        try {
+            if (fs.existsSync(this._lidMapPath)) {
+                const data = JSON.parse(fs.readFileSync(this._lidMapPath, 'utf8'))
+                for (const [k, v] of Object.entries(data)) {
+                    this._lidMap.set(k, v)
+                }
+                console.log(`[lid-map] cargado desde disco: ${this._lidMap.size} entradas`)
+            }
+        } catch (e) {
+            console.warn('[lid-map] error cargando desde disco:', e.message)
+        }
+    }
+
+    _saveLidMap() {
+        const data = Object.fromEntries(this._lidMap)
+        fs.writeFile(this._lidMapPath, JSON.stringify(data), 'utf8', (err) => {
+            if (err) console.warn('[lid-map] error guardando:', err.message)
+        })
     }
 
     // Actualiza _lidMap y despacha mensajes que estaban esperando resolución
     _registrarLid(lid, phone) {
         if (!lid || !phone) return
+        const esNuevo = !this._lidMap.has(lid)
         this._lidMap.set(lid, phone)
+        if (esNuevo) this._saveLidMap()
         const pending = this._lidPending.get(lid)
         if (pending?.length) {
             this._lidPending.delete(lid)
@@ -98,6 +117,149 @@ class ClientBaileys {
                     mensajeEntrante, header
                 )).catch(e => console.error('[lid-pending] error al despachar:', e.message))
             }
+        }
+    }
+
+    // Procesa un único mensaje entrante — llamado en paralelo desde messages.upsert
+    async _procesarMensaje(msg, sock) {
+        if (msg.key.fromMe) return
+        if (msg.key.remoteJid === 'status@broadcast') return
+        // Deduplicar: Baileys puede disparar este evento dos veces para el mismo mensaje
+        if (this._processedIds.has(msg.key.id)) {
+            console.log(`[dedup] ${msg.key.id} ya procesado — ignorando`)
+            return
+        }
+        // Saltar mensajes sin contenido — NO marcar como procesados
+        // para que los retries de WhatsApp puedan pasar cuando la sesión se reestablezca
+        if (!msg.message) {
+            console.log(`[skip] ${msg.key.id} sin msg.message (stubType=${msg.messageStubType}) — descartando`)
+            return
+        }
+
+        this._processedIds.add(msg.key.id)
+
+        const esGrupo = msg.key.remoteJid?.endsWith('@g.us')
+        // Obtener JID crudo del remitente (participant en grupos, remoteJid en individuales)
+        // Baileys 6.8+: remoteJidAlt/participantAlt contiene el PN real cuando el JID primario es @lid
+        const primaryJid = esGrupo ? msg.key.participant : msg.key.remoteJid
+        const altJid     = esGrupo ? msg.key.participantAlt : msg.key.remoteJidAlt
+        // Si el primario es @lid y tenemos el Alt (PN), usarlo directamente — sin encolado
+        const rawJid = (primaryJid?.endsWith('@lid') && altJid) ? altJid : primaryJid
+        // Registrar el mapeo LID→PN en el mapa interno para futuros mensajes
+        if (primaryJid?.endsWith('@lid') && altJid) {
+            this._registrarLid(primaryJid.split('@')[0], altJid.split('@')[0].split(':')[0])
+        }
+        // Si es @lid (multi-device), resolver al número real via _lidMap
+        let from
+        let fromIsLid = false
+        if (rawJid?.endsWith('@lid')) {
+            const lid = rawJid.split('@')[0]
+
+            from = this.resolveLid(lid)
+            fromIsLid = (from === lid) // true si NO se pudo resolver todavía
+            console.log(`[lid] ${lid} → ${from}${fromIsLid ? ' (pendiente)' : ' ✓'}`)
+        } else {
+            from = this.fromJid(rawJid)
+        }
+        const to = this.numero
+
+        // Desenvolver mensajes wrapeados (ephemeral, viewOnce, etc.)
+        let innerMessage = msg.message || {}
+        if (innerMessage.ephemeralMessage) innerMessage = innerMessage.ephemeralMessage.message || {}
+        if (innerMessage.viewOnceMessage) innerMessage = innerMessage.viewOnceMessage.message || {}
+        if (innerMessage.viewOnceMessageV2) innerMessage = innerMessage.viewOnceMessageV2.message || {}
+        if (innerMessage.documentWithCaptionMessage) innerMessage = innerMessage.documentWithCaptionMessage.message || {}
+
+        const rawTipo = Object.keys(innerMessage)[0] || 'chat'
+        // Normalizar tipos de texto a 'chat' para compatibilidad con la UI
+        const tiposTexto = new Set(['conversation', 'extendedTextMessage'])
+        const tipo = tiposTexto.has(rawTipo) ? 'chat' : rawTipo
+
+        // Extraer texto del mensaje
+        let textoMensaje = innerMessage.conversation
+            || innerMessage.extendedTextMessage?.text
+            || ''
+
+        let mensajeEntrante = {
+            numeroDesde: from,
+            numeroPara: to,
+            mensaje: textoMensaje,
+            whatsAppTipo: tipo,
+            fechaEnvio: new Date((msg.messageTimestamp || Date.now() / 1000) * 1000),
+            whatsAppId: msg.key.id,
+            tieneAdjunto: false,
+            esGif: false,
+        }
+
+        // Nombre del contacto — msg.pushName es la fuente más confiable
+        const senderJid = esGrupo ? msg.key.participant : msg.key.remoteJid
+        const contact = store.contacts[senderJid]
+        mensajeEntrante.nombreContacto = msg.pushName
+            || contact?.notify || contact?.name || ''
+
+        // ID del mensaje citado — buscar contextInfo en cualquier tipo de mensaje
+        const contextInfo = innerMessage.extendedTextMessage?.contextInfo
+            || innerMessage.imageMessage?.contextInfo
+            || innerMessage.videoMessage?.contextInfo
+            || innerMessage.audioMessage?.contextInfo
+            || innerMessage.documentMessage?.contextInfo
+            || innerMessage.stickerMessage?.contextInfo
+            || innerMessage.pttMessage?.contextInfo
+        if (contextInfo?.stanzaId) {
+            mensajeEntrante.whatsAppIdPadre = contextInfo.stanzaId
+        }
+
+        // Guardar key para reacciones
+        this.messageKeys.set(msg.key.id, msg.key)
+
+        // Media
+        const mediaTipos = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage', 'pttMessage']
+        const mediaTipo = mediaTipos.find(t => innerMessage[t])
+
+        if (mediaTipo) {
+            mensajeEntrante.tieneAdjunto = true
+            mensajeEntrante.esGif = innerMessage[mediaTipo]?.gifPlayback || false
+            try {
+                const buffer = await Promise.race([
+                    downloadMediaMessage(msg, 'buffer', {}),
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('media download timeout')), MEDIA_TIMEOUT_MS)
+                    )
+                ])
+                const mediaMsg = innerMessage[mediaTipo]
+                mensajeEntrante.adjuntoBase64 = buffer.toString('base64')
+                mensajeEntrante.mimeType = mediaMsg.mimetype
+                mensajeEntrante.nroByte = buffer.length
+                mensajeEntrante.nombreArchivo = mediaMsg.fileName || `archivo.${mediaMsg.mimetype?.split('/')[1] || 'bin'}`
+                // Caption para imágenes/video/documentos
+                if (mediaMsg.caption) mensajeEntrante.mensaje = mediaMsg.caption
+            } catch (e) {
+                console.error('[media] error descargando:', e.message)
+                mensajeEntrante.esErrorDescargaMultimedia = true
+            }
+        }
+
+        // Si el LID no está resuelto todavía, encolar el mensaje
+        // Se despachará en cuanto llegue chats.phoneNumberShare / contacts.upsert
+        if (fromIsLid) {
+            const lid = from
+            const isNew = !this._lidPending.has(lid)
+            if (isNew) {
+                this._lidPending.set(lid, [])
+                // Suscribirse a presencia del JID @lid — a veces fuerza a WA a enviar el mapeo
+                try { await sock.subscribePresence(lid + '@lid') } catch {}
+            }
+            this._lidPending.get(lid).push(mensajeEntrante)
+            console.log(`[lid] ${lid} encolado (total=${this._lidPending.get(lid).length}) — esperando resolución`)
+            return
+        }
+
+        try {
+            await retryWithBackoff(() => instanceAxios.post(process.env.URL_APP_Cola + '/api/RecepcionWa/recepcionar',
+                mensajeEntrante, header))
+            console.log(`[message] enviado al .NET ✓ from=${from}${esGrupo ? ' (grupo)' : ''}`)
+        } catch (e) {
+            console.error('[message] error notificando .NET:', e.message)
         }
     }
 
@@ -179,18 +341,10 @@ class ClientBaileys {
                     this._registrarLid(lid, phone)
                 }
             }
-            // Chats del historial — pueden traer pnJid para chats @lid
-            let lidChats = 0
+            // Chats del historial — se guardan en store pero NO se usa pnJid (fuente no confiable)
             for (const c of (historyChats || [])) {
                 store.chats[c.id] = c
-                if (c.id?.endsWith('@lid') && c.pnJid) {
-                    const lid   = c.id.split('@')[0]
-                    const phone = c.pnJid.split('@')[0]
-                    this._registrarLid(lid, phone)
-                    lidChats++
-                }
             }
-            if (lidChats > 0) console.log(`[messaging-history] ${lidChats} mapeos lid→phone registrados`)
         })
 
         sock.ev.on('messages.upsert', ({ messages: upsertMsgs }) => {
@@ -238,25 +392,14 @@ class ClientBaileys {
         sock.ev.on('chats.upsert', (chats) => {
             for (const c of chats) {
                 store.chats[c.id] = c
-                // pnJid = phone number JID — presente en chats cuyo id es un @lid
-                if (c.id?.endsWith('@lid') && c.pnJid) {
-                    const lid   = c.id.split('@')[0]
-                    const phone = c.pnJid.split('@')[0]
-                    console.log(`[chats.upsert] lid→phone: ${lid} → ${phone}`)
-                    this._registrarLid(lid, phone)
-                }
+                // pnJid NO se usa — fuente no confiable (history sync puede tener datos stale)
             }
         })
 
         sock.ev.on('chats.update', (updates) => {
             for (const upd of updates) {
                 if (upd.id) store.chats[upd.id] = { ...(store.chats[upd.id] || {}), ...upd }
-                if (upd.id?.endsWith('@lid') && upd.pnJid) {
-                    const lid   = upd.id.split('@')[0]
-                    const phone = upd.pnJid.split('@')[0]
-                    console.log(`[chats.update] lid→phone: ${lid} → ${phone}`)
-                    this._registrarLid(lid, phone)
-                }
+                // pnJid NO se usa — fuente no confiable (history sync puede tener datos stale)
             }
         })
 
@@ -282,13 +425,25 @@ class ClientBaileys {
                 this.estaActivo = true
                 this.estaInicializando = false
                 this._tuvoConexion = true
-                this.numero = sock.user?.id ? this.fromJid(sock.user.id) : this.numero
+                this.numero = this.numero || (sock.user?.id ? this.fromJid(sock.user.id) : '')
                 console.log(`[Baileys] Conectado: ${this.numero}`)
                 try {
                     await retryWithBackoff(() => instanceAxios.post(process.env.URL_APP_Cola + '/api/RecepcionWa/recepcionar-numero',
                         { numeroDesde: this.numero }, header))
                 } catch (e) {
                     console.error('[ready] error notificando .NET:', e.message)
+                }
+
+                // Pre-poblar _lidMap desde store.contacts (fuente confiable — campo .lid)
+                // store.chats/pnJid NO se usa — puede tener datos stale del history sync
+                {
+                    let count = 0
+                    for (const [jid, contact] of Object.entries(store.contacts || {})) {
+                        if (!jid.endsWith('@s.whatsapp.net')) continue
+                        const lid = (contact?.lid || '').split('@')[0]
+                        if (lid) { this._registrarLid(lid, jid.split('@')[0]); count++ }
+                    }
+                    console.log(`[lid-init] pre-poblados ${count} mapeos LID desde contacts`)
                 }
             }
 
@@ -301,6 +456,15 @@ class ClientBaileys {
                 const shouldReconnect = !isLoggedOut && !isReplaced
                 console.warn(`[Baileys] Desconectado. Código: ${code}. Reconectar: ${shouldReconnect}`)
                 this.estaActivo = false
+
+                // Limpiar LIDs pendientes al cerrar — no pueden resolverse sin socket activo
+                if (this._lidPending.size > 0) {
+                    let totalDescartados = 0
+                    for (const msgs of this._lidPending.values()) totalDescartados += msgs.length
+                    console.warn(`[lid] socket cerrado — descartando ${this._lidPending.size} LIDs no resueltos (${totalDescartados} mensajes)`)
+                    this._lidPending.clear()
+                }
+
                 if (shouldReconnect) {
                     // Cancelar timer previo antes de programar uno nuevo
                     if (this._reconnectTimer) {
@@ -332,148 +496,7 @@ class ClientBaileys {
             console.log(`[messages.upsert] type=${type}, count=${messages.length}`)
             if (type !== 'notify') return
 
-            for (const msg of messages) {
-                if (msg.key.fromMe) continue // ignorar mensajes propios
-                if (msg.key.remoteJid === 'status@broadcast') continue
-                // Deduplicar: Baileys puede disparar este evento dos veces para el mismo mensaje
-                if (this._processedIds.has(msg.key.id)) {
-                    console.log(`[dedup] ${msg.key.id} ya procesado — ignorando`)
-                    continue
-                }
-                this._processedIds.add(msg.key.id)
-
-                const esGrupo = msg.key.remoteJid?.endsWith('@g.us')
-                // Obtener JID crudo del remitente (participant en grupos, remoteJid en individuales)
-                const rawJid = esGrupo ? msg.key.participant : msg.key.remoteJid
-                // Si es @lid (multi-device), resolver al número real via _lidMap
-                let from
-                let fromIsLid = false
-                if (rawJid?.endsWith('@lid')) {
-                    const lid = rawJid.split('@')[0]
-
-                    // === DIAGNÓSTICO: mostrar qué hay en el store para este LID ===
-                    const diagChat = store.chats[rawJid]
-                    const diagContactsWithLid = Object.entries(store.contacts || {})
-                        .filter(([, c]) => (c?.lid || '').split('@')[0] === lid)
-                        .map(([jid]) => jid)
-                    console.log(`[lid-diag] lid=${lid}`)
-                    console.log(`[lid-diag] store.chats[${rawJid}]=`, JSON.stringify(diagChat ? { id: diagChat.id, pnJid: diagChat.pnJid, lidJid: diagChat.lidJid } : null))
-                    console.log(`[lid-diag] contacts con ese lid:`, diagContactsWithLid)
-                    console.log(`[lid-diag] _lidMap.has=${this._lidMap.has(lid)} tamaño-store.chats=${Object.keys(store.chats).length} tamaño-store.contacts=${Object.keys(store.contacts).length}`)
-                    // ===================================================
-
-                    from = this.resolveLid(lid)
-                    fromIsLid = (from === lid) // true si NO se pudo resolver todavía
-                    console.log(`[lid] ${lid} → ${from}${fromIsLid ? ' (pendiente)' : ' ✓'}`)
-                } else {
-                    from = this.fromJid(rawJid)
-                }
-                const to = this.fromJid(sock.user?.id || '')
-
-                // Desenvolver mensajes wrapeados (ephemeral, viewOnce, etc.)
-                let innerMessage = msg.message || {}
-                if (innerMessage.ephemeralMessage) innerMessage = innerMessage.ephemeralMessage.message || {}
-                if (innerMessage.viewOnceMessage) innerMessage = innerMessage.viewOnceMessage.message || {}
-                if (innerMessage.viewOnceMessageV2) innerMessage = innerMessage.viewOnceMessageV2.message || {}
-                if (innerMessage.documentWithCaptionMessage) innerMessage = innerMessage.documentWithCaptionMessage.message || {}
-
-                const tipo = Object.keys(innerMessage)[0] || 'chat'
-
-                // Extraer texto del mensaje
-                let textoMensaje = innerMessage.conversation
-                    || innerMessage.extendedTextMessage?.text
-                    || ''
-
-                let mensajeEntrante = {
-                    numeroDesde: from,
-                    numeroPara: to,
-                    mensaje: textoMensaje,
-                    whatsAppTipo: tipo,
-                    fechaEnvio: new Date((msg.messageTimestamp || Date.now() / 1000) * 1000),
-                    whatsAppId: msg.key.id,
-                    tieneAdjunto: false,
-                    esGif: false,
-                }
-
-                // Nombre del contacto — msg.pushName es la fuente más confiable
-                const senderJid = esGrupo ? msg.key.participant : msg.key.remoteJid
-                const contact = store.contacts[senderJid]
-                mensajeEntrante.nombreContacto = msg.pushName
-                    || contact?.notify || contact?.name || ''
-
-                // ID del mensaje citado — buscar contextInfo en cualquier tipo de mensaje
-                const contextInfo = innerMessage.extendedTextMessage?.contextInfo
-                    || innerMessage.imageMessage?.contextInfo
-                    || innerMessage.videoMessage?.contextInfo
-                    || innerMessage.audioMessage?.contextInfo
-                    || innerMessage.documentMessage?.contextInfo
-                    || innerMessage.stickerMessage?.contextInfo
-                    || innerMessage.pttMessage?.contextInfo
-                if (contextInfo?.stanzaId) {
-                    mensajeEntrante.whatsAppIdPadre = contextInfo.stanzaId
-                }
-
-                // Guardar key para reacciones
-                this.messageKeys.set(msg.key.id, msg.key)
-
-                // Media
-                const mediaTipos = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage', 'pttMessage']
-                const mediaTipo = mediaTipos.find(t => innerMessage[t])
-
-                if (mediaTipo) {
-                    mensajeEntrante.tieneAdjunto = true
-                    mensajeEntrante.esGif = innerMessage[mediaTipo]?.gifPlayback || false
-                    try {
-                        const buffer = await downloadMediaMessage(msg, 'buffer', {})
-                        const mediaMsg = innerMessage[mediaTipo]
-                        mensajeEntrante.adjuntoBase64 = buffer.toString('base64')
-                        mensajeEntrante.mimeType = mediaMsg.mimetype
-                        mensajeEntrante.nroByte = buffer.length
-                        mensajeEntrante.nombreArchivo = mediaMsg.fileName || `archivo.${mediaMsg.mimetype?.split('/')[1] || 'bin'}`
-                        // Caption para imágenes/video/documentos
-                        if (mediaMsg.caption) mensajeEntrante.mensaje = mediaMsg.caption
-                    } catch (e) {
-                        console.error('[media] error descargando:', e.message)
-                        mensajeEntrante.esErrorDescargaMultimedia = true
-                    }
-                }
-
-                // Si el LID no está resuelto todavía, encolar el mensaje
-                // Se despachará en cuanto llegue chats.phoneNumberShare / contacts.upsert
-                if (fromIsLid) {
-                    const lid = from
-                    const isNew = !this._lidPending.has(lid)
-                    if (isNew) {
-                        this._lidPending.set(lid, [])
-                        // Suscribirse a presencia del JID @lid — a veces fuerza a WA a enviar el mapeo
-                        try { await sock.subscribePresence(lid + '@lid') } catch {}
-                        // Fallback: si en 30s no llega la resolución, enviar igual con el LID como número
-                        setTimeout(() => {
-                            const pend = this._lidPending.get(lid)
-                            if (pend?.length) {
-                                this._lidPending.delete(lid)
-                                console.warn(`[lid] ${lid} no resuelto en 30s — enviando ${pend.length} mensajes con LID como fallback`)
-                                for (const m of pend) {
-                                    retryWithBackoff(() => instanceAxios.post(
-                                        process.env.URL_APP_Cola + '/api/RecepcionWa/recepcionar', m, header
-                                    )).catch(e => console.error('[lid-timeout]', e.message))
-                                }
-                            }
-                        }, 30000)
-                    }
-                    this._lidPending.get(lid).push(mensajeEntrante)
-                    console.log(`[lid] ${lid} encolado (total=${this._lidPending.get(lid).length}) — esperando chats.phoneNumberShare`)
-                    continue
-                }
-
-                try {
-                    await retryWithBackoff(() => instanceAxios.post(process.env.URL_APP_Cola + '/api/RecepcionWa/recepcionar',
-                        mensajeEntrante, header))
-                    console.log(`[message] enviado al .NET ✓ from=${from}${esGrupo ? ' (grupo)' : ''}`)
-                } catch (e) {
-                    console.error('[message] error notificando .NET:', e.message)
-                }
-            }
+            await Promise.allSettled(messages.map(msg => this._procesarMensaje(msg, sock)))
         })
 
         // ACK (recibido/leído)

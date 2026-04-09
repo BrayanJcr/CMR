@@ -94,10 +94,12 @@ export default function ContactoDetalle() {
   const handleSaveActividad = async () => {
     try {
       const values = await actForm.validateFields()
+      const { estado, fecha, ...rest } = values
       const payload = {
-        ...values,
+        ...rest,
         idContacto: parseInt(id),
-        fecha: values.fecha ? values.fecha.toISOString() : null
+        estadoActividad: estado ?? 'pendiente',
+        fechaActividad: fecha ? fecha.toISOString() : null
       }
       await api.post('/Actividad', payload)
       message.success('Actividad creada')

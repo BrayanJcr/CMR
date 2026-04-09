@@ -144,9 +144,11 @@ export default function Actividades() {
     try {
       const values = await form.validateFields()
       setSaving(true)
+      const { estado, fecha, ...rest } = values
       const payload = {
-        ...values,
-        fecha: values.fecha ? values.fecha.toISOString() : null
+        ...rest,
+        estadoActividad: estado ?? 'pendiente',
+        fechaActividad: fecha ? fecha.toISOString() : null
       }
       if (editingId) {
         await api.put(`/Actividad/${editingId}`, payload)

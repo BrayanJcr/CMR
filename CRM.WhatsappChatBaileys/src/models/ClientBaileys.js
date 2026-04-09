@@ -54,7 +54,7 @@ class ClientBaileys {
         this._processedIds = new Set()
         setInterval(() => this._processedIds.clear(), 10 * 60 * 1000)
         // Persistencia del mapa LID→PN
-        this._lidMapPath = path.join('sesiones-baileys', 'lid-map.json')
+        this._lidMapPath = path.join(__dirname, '..', '..', 'sesiones-baileys', 'lid-map.json')
         this._loadLidMap()
     }
 
@@ -87,6 +87,8 @@ class ClientBaileys {
                     this._lidMap.set(k, v)
                 }
                 console.log(`[lid-map] cargado desde disco: ${this._lidMap.size} entradas`)
+            } else {
+                console.log(`[lid-map] no encontrado en: ${this._lidMapPath}`)
             }
         } catch (e) {
             console.warn('[lid-map] error cargando desde disco:', e.message)
@@ -246,8 +248,6 @@ class ClientBaileys {
             const isNew = !this._lidPending.has(lid)
             if (isNew) {
                 this._lidPending.set(lid, [])
-                // Suscribirse a presencia del JID @lid — a veces fuerza a WA a enviar el mapeo
-                try { await sock.subscribePresence(lid + '@lid') } catch {}
             }
             this._lidPending.get(lid).push(mensajeEntrante)
             console.log(`[lid] ${lid} encolado (total=${this._lidPending.get(lid).length}) — esperando resolución`)
@@ -327,6 +327,7 @@ class ClientBaileys {
 
         // Bind manual del store (reemplaza store.bind(sock.ev))
         sock.ev.on('messaging-history.set', ({ messages: historyMsgs, contacts: historyContacts, chats: historyChats, isLatest }) => {
+            console.log(`[history] isLatest=${isLatest} contacts=${historyContacts?.length ?? 0} chats=${historyChats?.length ?? 0}`)
             for (const msg of (historyMsgs || [])) {
                 const jid = msg.key.remoteJid
                 if (!store.messages[jid]) store.messages[jid] = new Map()
@@ -389,17 +390,48 @@ class ClientBaileys {
             }
         })
 
+        // Intercept raw WS node BEFORE Baileys processes it — sender_pn está presente
+        // en mensajes normales de LID aunque Baileys solo lo use para SHARE_PHONE_NUMBER
+        sock.ws.on('CB:message', (node) => {
+            const from = node?.attrs?.from || ''
+            const senderPn = node?.attrs?.sender_pn || ''
+            if (from.endsWith('@lid') && senderPn) {
+                const lidNum = from.split('@')[0]
+                const phone  = senderPn.split('@')[0].split(':')[0]
+                if (lidNum && phone) {
+                    console.log(`[CB:message sender_pn] ${lidNum} → ${phone}`)
+                    this._registrarLid(lidNum, phone)
+                }
+            }
+        })
+
         sock.ev.on('chats.upsert', (chats) => {
             for (const c of chats) {
                 store.chats[c.id] = c
-                // pnJid NO se usa — fuente no confiable (history sync puede tener datos stale)
+                // pnJid confiable solo después de connection:open
+                if (this.estaActivo && c.id?.endsWith('@lid') && c.pnJid) {
+                    const lid   = c.id.split('@')[0]
+                    const phone = c.pnJid.split('@')[0].split(':')[0]
+                    if (lid && phone) {
+                        console.log(`[lid-pnjid] chats.upsert ${lid} → ${phone}`)
+                        this._registrarLid(lid, phone)
+                    }
+                }
             }
         })
 
         sock.ev.on('chats.update', (updates) => {
             for (const upd of updates) {
                 if (upd.id) store.chats[upd.id] = { ...(store.chats[upd.id] || {}), ...upd }
-                // pnJid NO se usa — fuente no confiable (history sync puede tener datos stale)
+                // pnJid confiable en tiempo real (estaActivo=true): viene del server WA junto al mensaje
+                if (this.estaActivo && upd.id?.endsWith('@lid') && upd.pnJid) {
+                    const lid   = upd.id.split('@')[0]
+                    const phone = upd.pnJid.split('@')[0].split(':')[0]
+                    if (lid && phone) {
+                        console.log(`[lid-pnjid] chats.update ${lid} → ${phone}`)
+                        this._registrarLid(lid, phone)
+                    }
+                }
             }
         })
 

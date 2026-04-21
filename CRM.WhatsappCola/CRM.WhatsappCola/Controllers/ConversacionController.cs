@@ -28,9 +28,19 @@ namespace CRM.WhatsappCola.Controllers
                 var resumen = _db.VObtenerResumenConversacion.ToList();
                 var convs   = _db.TConversacion.Where(c => c.Estado).ToList();
 
+                // Cargar etiquetas de todas las conversaciones en un solo query
+                var convIds = convs.Select(c => c.Id).ToList();
+                var etiquetasMap = _db.TConversacionEtiqueta
+                    .Where(ce => convIds.Contains(ce.IdConversacion))
+                    .Select(ce => new { ce.IdConversacion, ce.IdEtiqueta, ce.IdEtiquetaNavigation.Nombre, ce.IdEtiquetaNavigation.Color })
+                    .ToList()
+                    .GroupBy(x => x.IdConversacion)
+                    .ToDictionary(g => g.Key, g => g.Select(x => new { id = x.IdEtiqueta, nombre = x.Nombre, color = x.Color }).ToList());
+
                 var resultado = convs.Select(c =>
                 {
                     var r = resumen.FirstOrDefault(x => x.NumeroCuenta == c.NumeroCuenta && x.NumeroCliente == c.NumeroCliente);
+                    etiquetasMap.TryGetValue(c.Id, out var etiquetas);
                     return new
                     {
                         id                    = c.Id,
@@ -41,6 +51,8 @@ namespace CRM.WhatsappCola.Controllers
                         modoConversacion      = c.ModoConversacion,
                         estadoConversacion    = c.EstadoConversacion ?? "abierta",
                         nota                  = c.Nota,
+                        agenteAsignado        = c.AgenteAsignado,
+                        etiquetas             = etiquetas,
                         ultimoMensaje         = r?.UltimoMensaje,
                         ultimoMimeType        = r?.UltimoMimeType,
                         ultimoEsEntrante      = r?.UltimoEsEntrante != 0,
@@ -73,28 +85,56 @@ namespace CRM.WhatsappCola.Controllers
                     .OrderBy(m => m.FechaEnvio)
                     .Select(m => new
                     {
-                        id                      = m.IdMensajeEntrante ?? m.IdMensajeSaliente,
-                        esEntrante              = m.IdMensajeSaliente == null,
-                        cuerpo                  = m.Mensaje,
-                        tipo                    = string.IsNullOrEmpty(m.MimeType) ? "texto"
-                                                  : m.MimeType.StartsWith("image/") ? "image"
-                                                  : m.MimeType.StartsWith("audio/") ? "audio"
-                                                  : m.MimeType.StartsWith("video/") ? "video"
-                                                  : "document",
-                        urlMedia                = !string.IsNullOrEmpty(m.AdjuntoBase64) && !string.IsNullOrEmpty(m.MimeType)
-                                                  ? $"data:{m.MimeType};base64,{m.AdjuntoBase64}"
-                                                  : null,
-                        fechaEnvio              = m.FechaEnvio,
-                        whatsAppId              = m.WhatsAppId,
-                        whatsAppIdPadre         = m.WhatsAppIdPadre,
-                        ack                     = m.AckEstado,
-                        mimeType                = m.MimeType,
-                        nombreArchivo           = m.NombreArchivo,
-                        esErrorDescargaMultimedia = m.EsErrorDescargaMultimedia
+                        id                        = (object)(m.IdMensajeEntrante ?? m.IdMensajeSaliente),
+                        whatsAppId                = m.WhatsAppId,
+                        esEntrante                = m.IdMensajeSaliente == null,
+                        esNotaInterna             = false,
+                        cuerpo                    = m.Mensaje,
+                        tipo                      = string.IsNullOrEmpty(m.MimeType) ? "texto"
+                                                    : m.MimeType.StartsWith("image/") ? "image"
+                                                    : m.MimeType.StartsWith("audio/") ? "audio"
+                                                    : m.MimeType.StartsWith("video/") ? "video"
+                                                    : "document",
+                        urlMedia                  = !string.IsNullOrEmpty(m.AdjuntoBase64) && !string.IsNullOrEmpty(m.MimeType)
+                                                    ? $"data:{m.MimeType};base64,{m.AdjuntoBase64}"
+                                                    : null,
+                        fechaEnvio                = m.FechaEnvio,
+                        whatsAppIdPadre           = m.WhatsAppIdPadre,
+                        ack                       = m.AckEstado,
+                        mimeType                  = m.MimeType,
+                        nombreArchivo             = m.NombreArchivo,
+                        esErrorDescargaMultimedia = m.EsErrorDescargaMultimedia,
+                        usuario                   = (string)null
                     })
+                    .ToList<object>();
+
+                // Intercalar notas internas ordenadas por fecha
+                var notas = _db.TNotaConversacion
+                    .Where(n => n.IdConversacion == id)
+                    .Select(n => new
+                    {
+                        id                        = (object)$"nota-{n.Id}",
+                        whatsAppId                = (string)null,
+                        esEntrante                = false,
+                        esNotaInterna             = true,
+                        cuerpo                    = n.Texto,
+                        tipo                      = "nota",
+                        urlMedia                  = (string)null,
+                        fechaEnvio                = n.FechaCreacion,
+                        whatsAppIdPadre           = (string)null,
+                        ack                       = (int?)null,
+                        mimeType                  = (string)null,
+                        nombreArchivo             = (string)null,
+                        esErrorDescargaMultimedia = (bool?)null,
+                        usuario                   = n.Usuario
+                    })
+                    .ToList<object>();
+
+                var resultado = mensajes.Concat(notas)
+                    .OrderBy(m => ((dynamic)m).fechaEnvio)
                     .ToList();
 
-                return Ok(mensajes);
+                return Ok(resultado);
             }
             catch (Exception ex)
             {
@@ -173,6 +213,28 @@ namespace CRM.WhatsappCola.Controllers
             catch (Exception ex) { return BadRequest(ex.Message); }
         }
 
+        /// <summary>POST /api/Conversacion/{id}/notas — crea una nota interna</summary>
+        [HttpPost("{id}/notas")]
+        public IActionResult CreateNota(int id, [FromBody] DTOs.Conversaciones.UpdateNotaConversacionDTO dto)
+        {
+            try
+            {
+                var conv = _db.TConversacion.FirstOrDefault(c => c.Id == id && c.Estado);
+                if (conv == null) return NotFound(new { mensaje = "Conversación no encontrada" });
+                var nota = new Models.TNotaConversacion
+                {
+                    IdConversacion = id,
+                    Texto          = dto.Nota?.Trim() ?? "",
+                    Usuario        = User?.Identity?.Name ?? "agente",
+                    FechaCreacion  = DateTime.Now
+                };
+                _db.TNotaConversacion.Add(nota);
+                _db.SaveChanges();
+                return Ok(new { id = nota.Id, texto = nota.Texto, usuario = nota.Usuario, fechaCreacion = nota.FechaCreacion });
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
         [HttpPost("ObtenerDetalle")]
         public async Task<IActionResult> ObtenerDetalle([FromBody] FiltroDetalleConversacionDTO filtroDto)
         {
@@ -201,6 +263,64 @@ namespace CRM.WhatsappCola.Controllers
             {
                 return BadRequest(ex.Message + (ex.InnerException != null ? " - " + ex.InnerException.Message : ""));
             }
+        }
+
+        /// <summary>PUT /api/Conversacion/{id}/agente — asigna un agente a la conversación</summary>
+        [HttpPut("{id}/agente")]
+        public IActionResult UpdateAgente(int id, [FromBody] UpdateAgenteConversacionDTO dto)
+        {
+            try
+            {
+                var conv = _db.TConversacion.FirstOrDefault(c => c.Id == id && c.Estado);
+                if (conv == null) return NotFound(new { mensaje = "Conversación no encontrada" });
+                conv.AgenteAsignado    = string.IsNullOrWhiteSpace(dto.AgenteAsignado) ? null : dto.AgenteAsignado.Trim();
+                conv.FechaModificacion = DateTime.Now;
+                _db.SaveChanges();
+                return Ok(new { agenteAsignado = conv.AgenteAsignado });
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
+        /// <summary>POST /api/Conversacion/{id}/etiquetas — agrega una etiqueta a la conversación</summary>
+        [HttpPost("{id}/etiquetas")]
+        public IActionResult AddEtiqueta(int id, [FromBody] AddEtiquetaConversacionDTO dto)
+        {
+            try
+            {
+                var conv = _db.TConversacion.FirstOrDefault(c => c.Id == id && c.Estado);
+                if (conv == null) return NotFound(new { mensaje = "Conversación no encontrada" });
+
+                var etiqueta = _db.TEtiqueta.FirstOrDefault(e => e.Id == dto.IdEtiqueta && e.Estado);
+                if (etiqueta == null) return NotFound(new { mensaje = "Etiqueta no encontrada" });
+
+                if (!_db.TConversacionEtiqueta.Any(ce => ce.IdConversacion == id && ce.IdEtiqueta == dto.IdEtiqueta))
+                {
+                    _db.TConversacionEtiqueta.Add(new Models.TConversacionEtiqueta
+                    {
+                        IdConversacion = id,
+                        IdEtiqueta     = dto.IdEtiqueta
+                    });
+                    _db.SaveChanges();
+                }
+
+                return Ok(new { id = etiqueta.Id, nombre = etiqueta.Nombre, color = etiqueta.Color });
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
+        /// <summary>DELETE /api/Conversacion/{id}/etiquetas/{idEtiqueta} — quita una etiqueta de la conversación</summary>
+        [HttpDelete("{id}/etiquetas/{idEtiqueta}")]
+        public IActionResult RemoveEtiqueta(int id, int idEtiqueta)
+        {
+            try
+            {
+                var rel = _db.TConversacionEtiqueta.FirstOrDefault(ce => ce.IdConversacion == id && ce.IdEtiqueta == idEtiqueta);
+                if (rel == null) return NotFound(new { mensaje = "Relación no encontrada" });
+                _db.TConversacionEtiqueta.Remove(rel);
+                _db.SaveChanges();
+                return Ok(new { eliminado = true });
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
         }
     }
 }

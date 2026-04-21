@@ -15,3 +15,8 @@ public class UpdateNombreContactoDTO
 {
     public string NombreContacto { get; set; }
 }
+
+public class AddEtiquetaConversacionDTO
+{
+    public int IdEtiqueta { get; set; }
+}

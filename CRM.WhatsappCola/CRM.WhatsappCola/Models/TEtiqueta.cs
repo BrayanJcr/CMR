@@ -33,5 +33,7 @@ public partial class TEtiqueta
     /// <summary>Fecha de modificacion del registro</summary>
     public DateTime FechaModificacion { get; set; }
 
-    public virtual ICollection<TContactoEtiqueta> TContactoEtiqueta { get; set; } = new List<TContactoEtiqueta>();
+    public virtual ICollection<TContactoEtiqueta>    TContactoEtiqueta    { get; set; } = new List<TContactoEtiqueta>();
+
+    public virtual ICollection<TConversacionEtiqueta> TConversacionEtiqueta { get; set; } = new List<TConversacionEtiqueta>();
 }

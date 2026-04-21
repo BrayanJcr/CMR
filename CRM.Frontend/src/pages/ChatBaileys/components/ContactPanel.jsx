@@ -1,14 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { Button, Input, Select, Tag, Tooltip, Spin, Form, Modal, message as antMsg } from 'antd'
+import { Button, Input, Select, Tag, Tooltip, Spin, Form, Badge, Modal, DatePicker, InputNumber, message as antMsg } from 'antd'
 import {
   UserOutlined, MailOutlined, BankOutlined, TagOutlined,
   EditOutlined, SaveOutlined, PlusOutlined, LinkOutlined,
   FileTextOutlined, CloseOutlined, CheckCircleOutlined,
-  ClockCircleOutlined, StopOutlined, ExclamationCircleOutlined
+  ClockCircleOutlined, StopOutlined, ExclamationCircleOutlined,
+  TeamOutlined, BellOutlined, PhoneOutlined, TrophyOutlined,
+  CalendarOutlined, DollarOutlined, FlagOutlined, InfoCircleOutlined
 } from '@ant-design/icons'
+import dayjs from 'dayjs'
 import api from '../../../api/axios'
 import WaAvatar from '../../../components/WaAvatar'
 import { formatPhoneNumber } from '../../../utils/format'
+import RemindersDrawer from './RemindersDrawer'
 
 // ── Constantes de estado ────────────────────────────────────────────────────
 const ESTADOS = [
@@ -65,12 +69,27 @@ export default function ContactPanel({ conv, onEstadoChange, onNombreChange, onC
   const [nombreTemp,     setNombreTemp]     = useState('')
   const [savingNombre,   setSavingNombre]   = useState(false)
   const [creandoContacto, setCreandoContacto] = useState(false)
-  const [createForm] = Form.useForm()
+  const [agenteTemp,     setAgenteTemp]     = useState('')
+  const [savingAgente,   setSavingAgente]   = useState(false)
+  const [recordatoriosBadge, setRecordatoriosBadge] = useState(0)
+  const [remindersOpen,  setRemindersOpen]  = useState(false)
+  // Modales inline
+  const [contactDetailOpen, setContactDetailOpen] = useState(false)
+  const [actividadOpen,     setActividadOpen]      = useState(false)
+  const [pipelineOpen,      setPipelineOpen]       = useState(false)
+  const [savingActividad,   setSavingActividad]    = useState(false)
+  const [savingPipeline,    setSavingPipeline]     = useState(false)
+  const [etapas,            setEtapas]             = useState([])
+  const [loadingEtapas,     setLoadingEtapas]      = useState(false)
+  const [createForm]    = Form.useForm()
+  const [actividadForm] = Form.useForm()
+  const [pipelineForm]  = Form.useForm()
 
   const convId  = conv?.id || conv?.Id
   const numero  = conv?.numeroCliente || conv?.NumeroCliente || ''
   const nombre  = conv?.nombreContacto || conv?.NombreContacto || ''
   const estado  = conv?.estadoConversacion || 'abierta'
+  const agente  = conv?.agenteAsignado    || conv?.AgenteAsignado || ''
 
   // Cargar info del contacto en CRM
   useEffect(() => {
@@ -83,11 +102,20 @@ export default function ContactPanel({ conv, onEstadoChange, onNombreChange, onC
       .finally(() => setLoadingContact(false))
   }, [numero])
 
-  // Sincronizar nota al cambiar conversación
+  // Sincronizar nota y agente al cambiar conversación
   useEffect(() => {
     const n = conv?.nota || conv?.Nota || ''
     setNota(n)
     setNotaEditada(false)
+    setAgenteTemp(conv?.agenteAsignado || conv?.AgenteAsignado || '')
+  }, [convId])
+
+  // Badge de recordatorios pendientes
+  useEffect(() => {
+    if (!convId) return
+    api.get(`/Recordatorio?idConversacion=${convId}`)
+      .then(r => setRecordatoriosBadge(Array.isArray(r.data) ? r.data.length : 0))
+      .catch(() => setRecordatoriosBadge(0))
   }, [convId])
 
   // ── Cambiar estado de conversación ────────────────────────────────────────
@@ -151,6 +179,84 @@ export default function ContactPanel({ conv, onEstadoChange, onNombreChange, onC
       antMsg.error('No se pudo crear el contacto')
     } finally {
       setCreandoContacto(false)
+    }
+  }
+
+  // ── Cargar etapas del pipeline ───────────────────────────────────────────
+  const openPipelineModal = async () => {
+    pipelineForm.resetFields()
+    pipelineForm.setFieldsValue({ prioridad: 'media', montoEstimado: 0 })
+    if (!etapas.length) {
+      setLoadingEtapas(true)
+      try {
+        const r = await api.get('/Pipeline')
+        setEtapas(Array.isArray(r.data) ? r.data : (r.data?.etapas ?? []))
+      } catch { setEtapas([]) }
+      finally { setLoadingEtapas(false) }
+    }
+    setPipelineOpen(true)
+  }
+
+  // ── Crear actividad ──────────────────────────────────────────────────────
+  const handleCrearActividad = async () => {
+    try {
+      const values = await actividadForm.validateFields()
+      setSavingActividad(true)
+      await api.post('/Actividad', {
+        tipo:             values.tipo,
+        titulo:           values.titulo,
+        descripcion:      values.descripcion || '',
+        fechaActividad:   values.fecha ? values.fecha.toISOString() : null,
+        estadoActividad:  'pendiente',
+        idContacto:       contact?.id || null,
+      })
+      antMsg.success('Actividad creada')
+      actividadForm.resetFields()
+      setActividadOpen(false)
+    } catch (err) {
+      if (err?.errorFields) return
+      antMsg.error('No se pudo crear la actividad')
+    } finally {
+      setSavingActividad(false)
+    }
+  }
+
+  // ── Crear oportunidad en pipeline ────────────────────────────────────────
+  const handleCrearOportunidad = async () => {
+    try {
+      const values = await pipelineForm.validateFields()
+      setSavingPipeline(true)
+      await api.post('/Oportunidad', {
+        titulo:          values.titulo,
+        idEtapa:         values.idEtapa,
+        montoEstimado:   values.montoEstimado || 0,
+        prioridad:       values.prioridad,
+        fechaCierre:     values.fechaCierre ? values.fechaCierre.toISOString() : null,
+        notas:           values.notas || '',
+        origen:          'whatsapp',
+        idContacto:      contact?.id || null,
+      })
+      antMsg.success('Oportunidad agregada al pipeline')
+      pipelineForm.resetFields()
+      setPipelineOpen(false)
+    } catch (err) {
+      if (err?.errorFields) return
+      antMsg.error('No se pudo crear la oportunidad')
+    } finally {
+      setSavingPipeline(false)
+    }
+  }
+
+  // ── Guardar agente ────────────────────────────────────────────────────────
+  const handleSaveAgente = async () => {
+    setSavingAgente(true)
+    try {
+      await api.put(`/Conversacion/${convId}/agente`, { agenteAsignado: agenteTemp.trim() || null })
+      antMsg.success(agenteTemp.trim() ? `Asignado a ${agenteTemp.trim()}` : 'Agente removido')
+    } catch {
+      antMsg.error('No se pudo actualizar el agente')
+    } finally {
+      setSavingAgente(false)
     }
   }
 
@@ -276,11 +382,11 @@ export default function ContactPanel({ conv, onEstadoChange, onNombreChange, onC
                 </div>
               )}
               <Button
-                size="small" icon={<LinkOutlined />}
-                onClick={() => window.open(`/contactos`, '_blank')}
+                size="small" icon={<InfoCircleOutlined />}
+                onClick={() => setContactDetailOpen(true)}
                 style={{ background: '#2a3942', border: 'none', color: '#00a884', marginTop: 4 }}
               >
-                Ver contacto completo
+                Ver detalle completo
               </Button>
             </div>
           ) : (
@@ -342,18 +448,72 @@ export default function ContactPanel({ conv, onEstadoChange, onNombreChange, onC
           </div>
         </Section>
 
+        {/* ── Agente asignado ── */}
+        <Section title="Agente asignado" defaultOpen={false}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <TeamOutlined style={{ color: '#8696a0', fontSize: 13, flexShrink: 0 }} />
+              <Input
+                value={agenteTemp}
+                onChange={e => setAgenteTemp(e.target.value)}
+                onPressEnter={handleSaveAgente}
+                placeholder="Nombre del agente..."
+                style={{ background: '#2a3942', border: '1px solid #3b4a54', color: '#e9edef', borderRadius: 6, flex: 1 }}
+                size="small"
+              />
+            </div>
+            {agenteTemp !== (agente || '') && (
+              <Button
+                size="small" icon={<SaveOutlined />}
+                loading={savingAgente} onClick={handleSaveAgente}
+                style={{ background: '#00a884', border: 'none', color: '#fff' }}
+              >
+                Guardar
+              </Button>
+            )}
+            {agente && agenteTemp === agente && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ color: '#00a884', fontSize: 12 }}>Asignado a <strong>{agente}</strong></span>
+                <Button
+                  size="small" type="text"
+                  onClick={() => { setAgenteTemp(''); setTimeout(handleSaveAgente, 0) }}
+                  style={{ color: '#8696a0', fontSize: 11, padding: '0 4px', height: 20 }}
+                >
+                  Quitar
+                </Button>
+              </div>
+            )}
+          </div>
+        </Section>
+
+        {/* ── Recordatorios ── */}
+        <Section title="Recordatorios" defaultOpen={false}>
+          <Badge count={recordatoriosBadge} offset={[4, 0]}>
+            <Button
+              icon={<BellOutlined />}
+              onClick={() => setRemindersOpen(true)}
+              style={{ background: '#2a3942', border: 'none', color: recordatoriosBadge > 0 ? '#fa8c16' : '#8696a0', width: '100%', justifyContent: 'flex-start' }}
+              size="small"
+            >
+              {recordatoriosBadge > 0
+                ? `${recordatoriosBadge} recordatorio${recordatoriosBadge > 1 ? 's' : ''} pendiente${recordatoriosBadge > 1 ? 's' : ''}`
+                : 'Ver / agregar recordatorios'}
+            </Button>
+          </Badge>
+        </Section>
+
         {/* ── Acciones rápidas ── */}
         <Section title="Acciones rápidas" defaultOpen={false}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <Button size="small" icon={<FileTextOutlined />}
               style={{ background: '#2a3942', border: 'none', color: '#e9edef', textAlign: 'left', justifyContent: 'flex-start' }}
-              onClick={() => window.open('/actividades', '_blank')}
+              onClick={() => { actividadForm.resetFields(); actividadForm.setFieldsValue({ tipo: 'llamada' }); setActividadOpen(true) }}
             >
               Crear actividad
             </Button>
-            <Button size="small" icon={<UserOutlined />}
+            <Button size="small" icon={<TrophyOutlined />}
               style={{ background: '#2a3942', border: 'none', color: '#e9edef', textAlign: 'left', justifyContent: 'flex-start' }}
-              onClick={() => window.open('/pipeline', '_blank')}
+              onClick={openPipelineModal}
             >
               Agregar al pipeline
             </Button>
@@ -361,6 +521,190 @@ export default function ContactPanel({ conv, onEstadoChange, onNombreChange, onC
         </Section>
 
       </div>
+
+      <RemindersDrawer
+        open={remindersOpen}
+        onClose={() => { setRemindersOpen(false); api.get(`/Recordatorio?idConversacion=${convId}`).then(r => setRecordatoriosBadge(Array.isArray(r.data) ? r.data.length : 0)).catch(() => {}) }}
+        convId={convId}
+        convNombre={displayName}
+      />
+
+      {/* ── Modal: detalle completo del contacto ── */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <UserOutlined style={{ color: '#00a884' }} />
+            <span>{contact ? `${contact.nombres || ''} ${contact.apellidos || ''}`.trim() : 'Contacto'}</span>
+          </div>
+        }
+        open={contactDetailOpen}
+        onCancel={() => setContactDetailOpen(false)}
+        footer={null}
+        width={480}
+        styles={{ content: { background: '#1e2b33' }, header: { background: '#202c33', color: '#e9edef' }, body: { background: '#1e2b33' } }}
+      >
+        {contact && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '8px 0' }}>
+            {[
+              { icon: <PhoneOutlined />,    label: 'WhatsApp', value: formatPhoneNumber(contact.numeroWhatsApp) || contact.numeroWhatsApp },
+              { icon: <MailOutlined />,     label: 'Email',    value: contact.email },
+              { icon: <BankOutlined />,     label: 'Cargo',    value: [contact.cargo, contact.empresa].filter(Boolean).join(' · ') },
+            ].filter(r => r.value).map(row => (
+              <div key={row.label} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <span style={{ color: '#8696a0', fontSize: 13, paddingTop: 1, width: 20, textAlign: 'center', flexShrink: 0 }}>{row.icon}</span>
+                <div>
+                  <div style={{ color: '#8696a0', fontSize: 11, marginBottom: 2 }}>{row.label}</div>
+                  <div style={{ color: '#e9edef', fontSize: 13 }}>{row.value}</div>
+                </div>
+              </div>
+            ))}
+            {contact.etiquetas?.length > 0 && (
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <span style={{ color: '#8696a0', fontSize: 13, paddingTop: 2, width: 20, textAlign: 'center', flexShrink: 0 }}><TagOutlined /></span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {contact.etiquetas.map((et, i) => (
+                    <Tag key={i} style={{ background: (et.color || '#8696a0') + '22', color: et.color || '#8696a0', border: `1px solid ${et.color || '#8696a0'}44`, fontSize: 11 }}>
+                      {et.nombre}
+                    </Tag>
+                  ))}
+                </div>
+              </div>
+            )}
+            {contact.notas && (
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <span style={{ color: '#8696a0', fontSize: 13, paddingTop: 2, width: 20, textAlign: 'center', flexShrink: 0 }}><FileTextOutlined /></span>
+                <div>
+                  <div style={{ color: '#8696a0', fontSize: 11, marginBottom: 2 }}>Notas CRM</div>
+                  <div style={{ color: '#e9edef', fontSize: 13, whiteSpace: 'pre-wrap' }}>{contact.notas}</div>
+                </div>
+              </div>
+            )}
+            <div style={{ color: '#8696a0', fontSize: 11, paddingTop: 4, borderTop: '1px solid #2a3942' }}>
+              Registrado en CRM — contacto #{contact.id}
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Modal: crear actividad ── */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <FileTextOutlined style={{ color: '#00a884' }} />
+            <span>Nueva actividad</span>
+          </div>
+        }
+        open={actividadOpen}
+        onCancel={() => setActividadOpen(false)}
+        onOk={handleCrearActividad}
+        okText="Crear actividad"
+        okButtonProps={{ loading: savingActividad, style: { background: '#00a884', border: 'none' } }}
+        cancelButtonProps={{ style: { background: '#2a3942', border: 'none', color: '#8696a0' } }}
+        width={440}
+        styles={{ content: { background: '#1e2b33' }, header: { background: '#202c33', color: '#e9edef' }, body: { background: '#1e2b33' } }}
+        destroyOnHidden
+      >
+        <Form form={actividadForm} layout="vertical" size="small" style={{ marginTop: 12 }}>
+          <Form.Item name="tipo" label={<span style={{ color: '#8696a0' }}>Tipo</span>} rules={[{ required: true }]} style={{ marginBottom: 12 }}>
+            <Select
+              options={[
+                { value: 'llamada',  label: '📞 Llamada' },
+                { value: 'reunion',  label: '🤝 Reunión' },
+                { value: 'tarea',    label: '✅ Tarea' },
+                { value: 'email',    label: '✉️ Email' },
+              ]}
+              style={{ background: '#2a3942' }}
+            />
+          </Form.Item>
+          <Form.Item name="titulo" label={<span style={{ color: '#8696a0' }}>Título</span>} rules={[{ required: true, message: 'Ingresá un título' }]} style={{ marginBottom: 12 }}>
+            <Input placeholder="Ej: Llamar para hacer seguimiento" style={{ background: '#2a3942', border: '1px solid #3b4a54', color: '#e9edef', borderRadius: 6 }} />
+          </Form.Item>
+          <Form.Item name="descripcion" label={<span style={{ color: '#8696a0' }}>Descripción</span>} style={{ marginBottom: 12 }}>
+            <Input.TextArea rows={2} placeholder="Detalles adicionales..." style={{ background: '#2a3942', border: '1px solid #3b4a54', color: '#e9edef', borderRadius: 6 }} />
+          </Form.Item>
+          <Form.Item name="fecha" label={<span style={{ color: '#8696a0' }}>Fecha programada</span>} style={{ marginBottom: 4 }}>
+            <DatePicker showTime format="DD/MM/YYYY HH:mm" style={{ width: '100%', background: '#2a3942', border: '1px solid #3b4a54', borderRadius: 6, color: '#e9edef' }} />
+          </Form.Item>
+          {contact && (
+            <div style={{ color: '#8696a0', fontSize: 11, marginTop: 8 }}>
+              Asociada a: <span style={{ color: '#00a884' }}>{contact.nombres} {contact.apellidos || ''}</span>
+            </div>
+          )}
+        </Form>
+      </Modal>
+
+      {/* ── Modal: agregar al pipeline ── */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <TrophyOutlined style={{ color: '#fa8c16' }} />
+            <span>Nueva oportunidad en pipeline</span>
+          </div>
+        }
+        open={pipelineOpen}
+        onCancel={() => setPipelineOpen(false)}
+        onOk={handleCrearOportunidad}
+        okText="Agregar al pipeline"
+        okButtonProps={{ loading: savingPipeline, style: { background: '#fa8c16', border: 'none' } }}
+        cancelButtonProps={{ style: { background: '#2a3942', border: 'none', color: '#8696a0' } }}
+        width={460}
+        styles={{ content: { background: '#1e2b33' }, header: { background: '#202c33', color: '#e9edef' }, body: { background: '#1e2b33' } }}
+        destroyOnHidden
+      >
+        <Form form={pipelineForm} layout="vertical" size="small" style={{ marginTop: 12 }}>
+          <Form.Item name="titulo" label={<span style={{ color: '#8696a0' }}>Título de la oportunidad</span>} rules={[{ required: true, message: 'Requerido' }]} style={{ marginBottom: 12 }}>
+            <Input
+              placeholder="Ej: Venta servicio mensual"
+              defaultValue={contact ? `${contact.nombres || ''} — ` : ''}
+              style={{ background: '#2a3942', border: '1px solid #3b4a54', color: '#e9edef', borderRadius: 6 }}
+            />
+          </Form.Item>
+          <Form.Item name="idEtapa" label={<span style={{ color: '#8696a0' }}>Etapa del pipeline</span>} rules={[{ required: true, message: 'Elegí una etapa' }]} style={{ marginBottom: 12 }}>
+            <Select
+              loading={loadingEtapas}
+              placeholder="Seleccionar etapa..."
+              options={(etapas || []).map(e => ({
+                value: e.id || e.Id,
+                label: (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: e.color || e.Color || '#8696a0', display: 'inline-block', flexShrink: 0 }} />
+                    {e.nombre || e.Nombre}
+                  </span>
+                ),
+              }))}
+            />
+          </Form.Item>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+            <Form.Item name="montoEstimado" label={<span style={{ color: '#8696a0' }}>Monto estimado</span>} style={{ marginBottom: 0 }}>
+              <InputNumber
+                min={0} style={{ width: '100%', background: '#2a3942', border: '1px solid #3b4a54', borderRadius: 6 }}
+                prefix={<DollarOutlined style={{ color: '#8696a0' }} />}
+                formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+              />
+            </Form.Item>
+            <Form.Item name="prioridad" label={<span style={{ color: '#8696a0' }}>Prioridad</span>} style={{ marginBottom: 0 }}>
+              <Select
+                options={[
+                  { value: 'alta',  label: <span style={{ color: '#ff4d4f' }}>🔴 Alta</span> },
+                  { value: 'media', label: <span style={{ color: '#fa8c16' }}>🟡 Media</span> },
+                  { value: 'baja',  label: <span style={{ color: '#52c41a' }}>🟢 Baja</span> },
+                ]}
+              />
+            </Form.Item>
+          </div>
+          <Form.Item name="fechaCierre" label={<span style={{ color: '#8696a0' }}>Fecha de cierre estimada</span>} style={{ marginBottom: 12 }}>
+            <DatePicker format="DD/MM/YYYY" style={{ width: '100%', background: '#2a3942', border: '1px solid #3b4a54', borderRadius: 6 }} />
+          </Form.Item>
+          <Form.Item name="notas" label={<span style={{ color: '#8696a0' }}>Notas</span>} style={{ marginBottom: 4 }}>
+            <Input.TextArea rows={2} placeholder="Contexto de la oportunidad..." style={{ background: '#2a3942', border: '1px solid #3b4a54', color: '#e9edef', borderRadius: 6 }} />
+          </Form.Item>
+          {contact && (
+            <div style={{ color: '#8696a0', fontSize: 11, marginTop: 8 }}>
+              Contacto: <span style={{ color: '#00a884' }}>{contact.nombres} {contact.apellidos || ''}</span>
+            </div>
+          )}
+        </Form>
+      </Modal>
     </div>
   )
 }

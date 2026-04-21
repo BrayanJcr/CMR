@@ -5,6 +5,8 @@ node_modules/
 # Sesiones WhatsApp — credenciales sensibles, NUNCA commitear
 CRM.WhatsappChatBaileys/sesiones-baileys/
 CRM.WhatsappChatNode/sesiones/
+# EXCEPCIÓN: lid-map.json no tiene credenciales, contiene mapeos LID→teléfono
+!CRM.WhatsappChatBaileys/sesiones-baileys/lid-map.json
 
 # Variables de entorno
 .env

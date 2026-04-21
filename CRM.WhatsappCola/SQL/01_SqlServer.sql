@@ -963,3 +963,56 @@ GO
 IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TConversacion' AND COLUMN_NAME = 'Nota')
     ALTER TABLE TConversacion ADD Nota NVARCHAR(MAX) NULL;
 GO
+
+-- =============================================
+-- Parte 2: Notas internas de conversación
+-- =============================================
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'T_NotaConversacion')
+BEGIN
+    CREATE TABLE T_NotaConversacion (
+        Id              INT IDENTITY(1,1) PRIMARY KEY,
+        IdConversacion  INT NOT NULL,
+        Texto           NVARCHAR(MAX) NOT NULL,
+        Usuario         NVARCHAR(100) NOT NULL DEFAULT 'sistema',
+        FechaCreacion   DATETIME NOT NULL DEFAULT GETDATE(),
+        CONSTRAINT FK_NotaConversacion_Conversacion FOREIGN KEY (IdConversacion) REFERENCES T_Conversacion(Id)
+    );
+END
+GO
+
+-- =============================================
+-- Parte 4: Recordatorios + Agente asignado
+-- =============================================
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TConversacion' AND COLUMN_NAME = 'AgenteAsignado')
+    ALTER TABLE TConversacion ADD AgenteAsignado NVARCHAR(100) NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'T_Recordatorio')
+BEGIN
+    CREATE TABLE T_Recordatorio (
+        Id                  INT IDENTITY(1,1) PRIMARY KEY,
+        IdConversacion      INT NOT NULL,
+        Texto               NVARCHAR(MAX) NOT NULL,
+        FechaRecordatorio   DATETIME NOT NULL,
+        Completado          BIT NOT NULL DEFAULT 0,
+        UsuarioCreacion     NVARCHAR(100) NOT NULL DEFAULT 'sistema',
+        FechaCreacion       DATETIME NOT NULL DEFAULT GETDATE(),
+        CONSTRAINT FK_Recordatorio_Conversacion FOREIGN KEY (IdConversacion) REFERENCES T_Conversacion(Id)
+    );
+END
+GO
+
+-- =============================================
+-- Parte 3: Etiquetas rápidas por conversación
+-- =============================================
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'T_ConversacionEtiqueta')
+BEGIN
+    CREATE TABLE T_ConversacionEtiqueta (
+        IdConversacion  INT NOT NULL,
+        IdEtiqueta      INT NOT NULL,
+        CONSTRAINT PK_T_ConversacionEtiqueta PRIMARY KEY (IdConversacion, IdEtiqueta),
+        CONSTRAINT FK_ConvEtiqueta_Conversacion FOREIGN KEY (IdConversacion) REFERENCES T_Conversacion(Id),
+        CONSTRAINT FK_ConvEtiqueta_Etiqueta     FOREIGN KEY (IdEtiqueta)     REFERENCES T_Etiqueta(Id)
+    );
+END
+GO

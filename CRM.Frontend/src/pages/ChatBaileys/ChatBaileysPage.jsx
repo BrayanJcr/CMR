@@ -3,7 +3,8 @@ import { Button, Tooltip, Badge, Switch, Modal, Input, Spin, Typography, Form, A
 import {
   RobotOutlined, PhoneOutlined, VideoCameraOutlined,
   UserOutlined, ArrowLeftOutlined, InfoCircleOutlined, PlusOutlined,
-  TeamOutlined, SettingOutlined, ContactsOutlined
+  TeamOutlined, SettingOutlined, ContactsOutlined, BellOutlined,
+  SearchOutlined, BarChartOutlined
 } from '@ant-design/icons'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../../api/axios'
@@ -18,6 +19,10 @@ import PollCreator from './components/PollCreator'
 import BotRulesPanel from './components/BotRulesPanel'
 import BaileysConnect from './components/BaileysConnect'
 import ContactPanel from './components/ContactPanel'
+import ConvTagsSelector from './components/ConvTagsSelector'
+import RemindersDrawer from './components/RemindersDrawer'
+import GlobalSearchModal from './components/GlobalSearchModal'
+import MetricsDrawer from './components/MetricsDrawer'
 import WaAvatar from '../../components/WaAvatar'
 import SettingsDrawer from './components/SettingsDrawer'
 import GroupsPanel from './components/GroupsPanel'
@@ -60,6 +65,10 @@ export default function ChatBaileysPage() {
   const [settingsPanel,  setSettingsPanel]  = useState(false)
   const [groupsPanel,    setGroupsPanel]    = useState(false)
   const [contactPanel,   setContactPanel]   = useState(false)
+  const [remindersPanel, setRemindersPanel] = useState(false)
+  const [remindersBadge, setRemindersBadge] = useState(0)
+  const [metricsPanel,   setMetricsPanel]   = useState(false)
+  const [searchOpen,     setSearchOpen]     = useState(false)
   const [waNumero,       setWaNumero]       = useState('')
 
   // ── Init ──────────────────────────────────────────────────────────────
@@ -77,7 +86,31 @@ export default function ChatBaileysPage() {
 
     const fn = () => setIsMobile(window.innerWidth < 768)
     window.addEventListener('resize', fn)
-    return () => window.removeEventListener('resize', fn)
+
+    // Ctrl+K / Cmd+K para búsqueda global
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+
+    // Polling recordatorios vencidos cada 60s
+    const checkReminders = () => {
+      api.get('/Recordatorio').then(r => {
+        const vencidos = Array.isArray(r.data) ? r.data.filter(x => x.vencido).length : 0
+        setRemindersBadge(vencidos)
+      }).catch(() => {})
+    }
+    checkReminders()
+    const reminderInterval = setInterval(checkReminders, 60_000)
+
+    return () => {
+      window.removeEventListener('resize', fn)
+      window.removeEventListener('keydown', onKey)
+      clearInterval(reminderInterval)
+    }
   }, [])
 
   // Abrir conv desde URL param
@@ -124,6 +157,10 @@ export default function ChatBaileysPage() {
     loadConversations()
   }, [loadConversations])
 
+  const handleEtiquetasChange = useCallback((nuevasEtiquetas) => {
+    setActiveConv(prev => prev ? { ...prev, etiquetas: nuevasEtiquetas } : prev)
+  }, [])
+
   // ── Toggle modo bot ──────────────────────────────────────────────────
   const handleToggleModo = async (checked) => {
     if (!activeId) return
@@ -133,6 +170,23 @@ export default function ChatBaileysPage() {
     } catch {
       // revert
       setModoBot(!checked)
+    }
+  }
+
+  // ── Enviar nota interna ───────────────────────────────────────────────────
+  const handleSendNota = async (texto) => {
+    if (!activeId || !texto.trim()) return
+    const tempId = `nota-temp-${Date.now()}`
+    setMessages(prev => [...prev, {
+      id: tempId, cuerpo: texto, esNotaInterna: true, tipo: 'nota',
+      fechaEnvio: new Date().toISOString(), usuario: 'Tú', _temp: true
+    }])
+    try {
+      await api.post(`/Conversacion/${activeId}/notas`, { nota: texto })
+      if (activeId) loadMessages(activeId)
+    } catch {
+      setMessages(prev => prev.filter(m => m.id !== tempId))
+      notification.error({ message: 'No se pudo guardar la nota interna' })
     }
   }
 
@@ -300,7 +354,17 @@ export default function ChatBaileysPage() {
           {/* Header sidebar */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#202c33' }}>
             <Text strong style={{ color: '#e9edef', fontSize: 16 }}>Chat Baileys</Text>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <Tooltip title="Buscar (Ctrl+K)">
+                <Button shape="circle" icon={<SearchOutlined />}
+                  style={{ background: '#2a3942', border: 'none', color: '#8696a0' }}
+                  onClick={() => setSearchOpen(true)} />
+              </Tooltip>
+              <Tooltip title="Métricas">
+                <Button shape="circle" icon={<BarChartOutlined />}
+                  style={{ background: '#2a3942', border: 'none', color: '#8696a0' }}
+                  onClick={() => setMetricsPanel(true)} />
+              </Tooltip>
               <Tooltip title="Nueva conversación">
                 <Button shape="circle" icon={<PlusOutlined />}
                   style={{ background: '#2a3942', border: 'none', color: '#8696a0' }}
@@ -315,6 +379,13 @@ export default function ChatBaileysPage() {
                 <Button shape="circle" icon={<RobotOutlined />}
                   style={{ background: '#2a3942', border: 'none', color: '#8696a0' }}
                   onClick={() => setBotPanel(true)} />
+              </Tooltip>
+              <Tooltip title="Recordatorios pendientes">
+                <Badge count={remindersBadge} size="small" offset={[-2, 2]}>
+                  <Button shape="circle" icon={<BellOutlined />}
+                    style={{ background: '#2a3942', border: 'none', color: remindersBadge > 0 ? '#fa8c16' : '#8696a0' }}
+                    onClick={() => setRemindersPanel(true)} />
+                </Badge>
               </Tooltip>
               <Tooltip title="Configuración">
                 <Button shape="circle" icon={<SettingOutlined />}
@@ -376,6 +447,15 @@ export default function ChatBaileysPage() {
                 </Tooltip>
               </div>
 
+              {/* Etiquetas rápidas */}
+              <div style={{ padding: '4px 14px', background: '#202c33', borderBottom: '1px solid #1f2d34', display: 'flex', alignItems: 'center', gap: 6, minHeight: 32 }}>
+                <ConvTagsSelector
+                  convId={activeId}
+                  tags={activeConv.etiquetas || []}
+                  onChange={handleEtiquetasChange}
+                />
+              </div>
+
               {/* Mensajes */}
               <MessageArea messages={messages} loading={loadingMsgs} typingNumbers={typingNumbers} activeNumber={activeNumber} />
 
@@ -387,6 +467,7 @@ export default function ChatBaileysPage() {
                 onSendLocation={() => setLocationModal(true)}
                 onSendPoll={() => setPollModal(true)}
                 onSendEphemeral={() => setEphemeralModal(true)}
+                onSendNota={handleSendNota}
                 activeNumero={activeNumber}
               />
             </>
@@ -450,6 +531,37 @@ export default function ChatBaileysPage() {
       {/* ── Settings & Groups ── */}
       <SettingsDrawer open={settingsPanel} onClose={() => setSettingsPanel(false)} currentNumber={waNumero} />
       <GroupsPanel open={groupsPanel} onClose={() => setGroupsPanel(false)} />
+
+      {/* ── Búsqueda global ── */}
+      <GlobalSearchModal
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onNavigate={(conv) => {
+          const found = conversations.find(c => (c.id || c.Id) === conv.id)
+          if (found) handleSelectConv(found)
+          else if (conv.id) {
+            // Conversación no cargada aún — cargamos y navegamos
+            loadConversations().then(convs => {
+              const c = (convs || conversations).find(x => (x.id || x.Id) === conv.id)
+              if (c) handleSelectConv(c)
+            })
+          }
+        }}
+      />
+
+      {/* ── Métricas ── */}
+      <MetricsDrawer open={metricsPanel} onClose={() => setMetricsPanel(false)} />
+
+      {/* ── Recordatorios globales ── */}
+      <RemindersDrawer
+        open={remindersPanel}
+        onClose={() => {
+          setRemindersPanel(false)
+          api.get('/Recordatorio').then(r => {
+            setRemindersBadge(Array.isArray(r.data) ? r.data.filter(x => x.vencido).length : 0)
+          }).catch(() => {})
+        }}
+      />
 
       {/* ── Nueva Conversación ── */}
       <Modal

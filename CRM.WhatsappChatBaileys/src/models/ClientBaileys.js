@@ -19,6 +19,9 @@ async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
         try {
             return await fn()
         } catch (e) {
+            const status = e?.response?.status
+            // Errores 4xx son definitivos (bad request, duplicado, etc.) — no reintentar
+            if (status >= 400 && status < 500) throw e
             if (attempt === maxRetries) throw e
             const delay = baseDelay * Math.pow(2, attempt)
             console.warn(`[retry] intento ${attempt + 1} fallido. Reintentando en ${delay}ms...`)
@@ -30,6 +33,18 @@ async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
 // Store en memoria (reemplaza makeInMemoryStore deprecado)
 const store = { messages: {}, contacts: {}, chats: {} }
 
+// Logger silencioso que intercepta errores Bad MAC para auto-recovery
+function createBaileysLogger(onBadMac) {
+    const noop = () => {}
+    const intercept = (obj, msg) => {
+        const text = (typeof msg === 'string' ? msg : '') + (obj?.err?.message || '') + (obj?.message || '')
+        if (text.includes('Bad MAC')) onBadMac()
+    }
+    return { level: 'silent', trace: noop, debug: noop, info: noop, warn: noop,
+             error: intercept, fatal: intercept,
+             child: () => createBaileysLogger(onBadMac) }
+}
+
 class ClientBaileys {
     numero = ''
     sock = null
@@ -38,13 +53,17 @@ class ClientBaileys {
     _conectando = false          // mutex — previene inicializar() concurrente
     _reconnectTimer = null       // referencia al timer de reconexión
     _tuvoConexion = false        // true si alguna vez llegó a connection === 'open'
+    _badMacCount = 0             // contador de errores Bad MAC en la ventana actual
+    _badMacResetTimer = null     // timer para resetear el contador
     // Mapa de messageKey por whatsAppId — para reacciones/respuestas
     messageKeys = new Map()
 
     constructor(numero) {
         this.numero = numero
-        // Mapa LID → número de teléfono real (para resolver @lid en multi-device)
+        // Mapa LID → número de teléfono real (persistido en disco para sobrevivir reinicios)
+        this._lidMapFile = path.join('sesiones-baileys', 'lid-map.json')
         this._lidMap = new Map()
+        this._loadLidMapFromDisk()
         // Cola de mensajes recibidos con @lid aún no resuelto
         // lid → [mensajeEntrante, ...]  (se despachan al llegar chats.phoneNumberShare)
         this._lidPending = new Map()
@@ -52,6 +71,32 @@ class ClientBaileys {
         // para el mismo mensaje (reconexión, history sync). Limpiar cada 10 min.
         this._processedIds = new Set()
         setInterval(() => this._processedIds.clear(), 10 * 60 * 1000)
+    }
+
+    _loadLidMapFromDisk() {
+        try {
+            if (fs.existsSync(this._lidMapFile)) {
+                const data = JSON.parse(fs.readFileSync(this._lidMapFile, 'utf8'))
+                for (const [lid, phone] of Object.entries(data)) {
+                    this._lidMap.set(lid, phone)
+                }
+                if (this._lidMap.size > 0)
+                    console.log(`[lid-map] ${this._lidMap.size} mapeos cargados desde disco`)
+            }
+        } catch (e) {
+            console.warn('[lid-map] error al cargar desde disco:', e.message)
+        }
+    }
+
+    _saveLidMapToDisk() {
+        try {
+            const obj = {}
+            for (const [lid, phone] of this._lidMap) obj[lid] = phone
+            fs.mkdirSync(path.dirname(this._lidMapFile), { recursive: true })
+            fs.writeFileSync(this._lidMapFile, JSON.stringify(obj, null, 2))
+        } catch (e) {
+            console.warn('[lid-map] error al guardar en disco:', e.message)
+        }
     }
 
     // Resuelve un LID al número de teléfono real
@@ -83,10 +128,12 @@ class ClientBaileys {
         return lid // desconocido — devolver el LID como fallback
     }
 
-    // Actualiza _lidMap y despacha mensajes que estaban esperando resolución
+    // Actualiza _lidMap, persiste en disco y despacha mensajes pendientes
     _registrarLid(lid, phone) {
         if (!lid || !phone) return
+        const isNew = !this._lidMap.has(lid)
         this._lidMap.set(lid, phone)
+        if (isNew) this._saveLidMapToDisk()  // solo guardar cuando hay algo nuevo
         const pending = this._lidPending.get(lid)
         if (pending?.length) {
             this._lidPending.delete(lid)
@@ -143,15 +190,16 @@ class ClientBaileys {
         const { version, isLatest } = await fetchLatestBaileysVersion()
         console.log(`[Baileys] Versión WA: ${version.join('.')}, ¿última? ${isLatest}`)
 
+        const baileysLogger = createBaileysLogger(() => this._registrarBadMac())
         const sock = makeWASocket({
             version,
             auth: {
                 creds: state.creds,
-                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
+                keys: makeCacheableSignalKeyStore(state.keys, baileysLogger)
             },
             browser: Browsers.ubuntu('Chrome'),
             printQRInTerminal: false,
-            logger: pino({ level: 'silent' }),
+            logger: baileysLogger,
             getMessage: async (key) => {
                 const msgs = store.messages[key.remoteJid]
                 if (!msgs) return undefined
@@ -608,6 +656,35 @@ class ClientBaileys {
         })
 
         return sock
+    }
+
+    // ========== RECUPERACIÓN AUTOMÁTICA ==========
+
+    async _limpiarYReconectar() {
+        if (this._badMacResetTimer) { clearTimeout(this._badMacResetTimer); this._badMacResetTimer = null }
+        this._badMacCount = 0
+        if (this.sock) {
+            try { this.sock.ev.removeAllListeners() } catch {}
+            try { this.sock.end(undefined) } catch {}
+            this.sock = null
+        }
+        try { fs.rmSync('sesiones-baileys', { recursive: true, force: true }) } catch {}
+        console.warn('[Baileys] Sesión limpiada por Bad MAC persistente — reconectando en 3s...')
+        this.estaActivo = false
+        this._conectando = false
+        this._tuvoConexion = false
+        setTimeout(() => this.inicializar(), 3000)
+    }
+
+    _registrarBadMac() {
+        this._badMacCount++
+        if (this._badMacResetTimer) clearTimeout(this._badMacResetTimer)
+        // Resetear contador después de 60s sin errores
+        this._badMacResetTimer = setTimeout(() => { this._badMacCount = 0 }, 60000)
+        if (this._badMacCount >= 5) {
+            console.warn(`[Baileys] Bad MAC x${this._badMacCount} — sesión corrompida, iniciando auto-recovery`)
+            this._limpiarYReconectar()
+        }
     }
 
     // ========== MÉTODOS DE ENVÍO ==========

@@ -130,6 +130,30 @@ function MessageBubble({ msg, numero }) {
     )
   }
 
+  // ── Nota interna ──────────────────────────────────────────────────────────
+  if (tipo === 'nota' || msg.esNotaInterna) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '3px 16px' }}>
+        <div style={{
+          background: '#2a2310', border: '1px solid #534f2a', borderRadius: 8,
+          padding: '7px 12px', maxWidth: '72%', width: '100%'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <span style={{ fontSize: 12 }}>🔒</span>
+            <span style={{ color: '#c5b350', fontSize: 11, fontWeight: 600 }}>Nota interna</span>
+            {(msg.usuario || msg.Usuario) && (
+              <span style={{ color: '#8696a0', fontSize: 11 }}>· {msg.usuario || msg.Usuario}</span>
+            )}
+            <span style={{ marginLeft: 'auto', color: '#8696a0', fontSize: 10 }}>{timeLabel}</span>
+          </div>
+          <p style={{ color: '#e9d97a', fontSize: 13, margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+            {body}
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   const bubbleStyle = {
     padding: '7px 10px',
     borderRadius: isOut ? '8px 0 8px 8px' : '0 8px 8px 8px',

@@ -66,4 +66,12 @@ public partial class TConversacion
     /// Nota interna sobre la conversación (visible solo para el equipo)
     /// </summary>
     public string? Nota { get; set; }
+
+    /// <summary>
+    /// Nombre del agente asignado a esta conversación
+    /// </summary>
+    public string? AgenteAsignado { get; set; }
+
+    public virtual ICollection<TConversacionEtiqueta> TConversacionEtiqueta { get; set; } = new List<TConversacionEtiqueta>();
+    public virtual ICollection<TRecordatorio>         TRecordatorio          { get; set; } = new List<TRecordatorio>();
 }

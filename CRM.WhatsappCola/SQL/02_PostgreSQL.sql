@@ -740,12 +740,44 @@ END $$;
 -- =============================================
 -- Parte 1: Panel de contacto + Estados
 -- =============================================
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'TConversacion' AND column_name = 'EstadoConversacion') THEN
-    ALTER TABLE "TConversacion" ADD COLUMN "EstadoConversacion" VARCHAR(20) NOT NULL DEFAULT 'abierta';
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'TConversacion' AND column_name = 'Nota') THEN
-    ALTER TABLE "TConversacion" ADD COLUMN "Nota" TEXT NULL;
-  END IF;
-END $$;
+ALTER TABLE "T_Conversacion" ADD COLUMN IF NOT EXISTS "EstadoConversacion" VARCHAR(20) NOT NULL DEFAULT 'abierta';
+ALTER TABLE "T_Conversacion" ADD COLUMN IF NOT EXISTS "Nota"               TEXT        NULL;
+
+-- =============================================
+-- Parte 2: Notas internas de conversación
+-- =============================================
+CREATE TABLE IF NOT EXISTS "T_NotaConversacion" (
+    "Id"              SERIAL PRIMARY KEY,
+    "IdConversacion"  INT NOT NULL,
+    "Texto"           TEXT NOT NULL,
+    "Usuario"         VARCHAR(100) NOT NULL DEFAULT 'sistema',
+    "FechaCreacion"   TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT "FK_NotaConversacion_Conversacion" FOREIGN KEY ("IdConversacion") REFERENCES "T_Conversacion"("Id")
+);
+
+-- =============================================
+-- Parte 4: Recordatorios + Agente asignado
+-- =============================================
+ALTER TABLE "T_Conversacion" ADD COLUMN IF NOT EXISTS "AgenteAsignado" VARCHAR(100) NULL;
+
+CREATE TABLE IF NOT EXISTS "T_Recordatorio" (
+    "Id"                  SERIAL PRIMARY KEY,
+    "IdConversacion"      INT NOT NULL,
+    "Texto"               TEXT NOT NULL,
+    "FechaRecordatorio"   TIMESTAMP NOT NULL,
+    "Completado"          BOOLEAN NOT NULL DEFAULT FALSE,
+    "UsuarioCreacion"     VARCHAR(100) NOT NULL DEFAULT 'sistema',
+    "FechaCreacion"       TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT "FK_Recordatorio_Conversacion" FOREIGN KEY ("IdConversacion") REFERENCES "T_Conversacion"("Id")
+);
+
+-- =============================================
+-- Parte 3: Etiquetas rápidas por conversación
+-- =============================================
+CREATE TABLE IF NOT EXISTS "T_ConversacionEtiqueta" (
+    "IdConversacion"  INT NOT NULL,
+    "IdEtiqueta"      INT NOT NULL,
+    CONSTRAINT "PK_T_ConversacionEtiqueta" PRIMARY KEY ("IdConversacion", "IdEtiqueta"),
+    CONSTRAINT "FK_ConvEtiqueta_Conversacion" FOREIGN KEY ("IdConversacion") REFERENCES "T_Conversacion"("Id"),
+    CONSTRAINT "FK_ConvEtiqueta_Etiqueta"     FOREIGN KEY ("IdEtiqueta")     REFERENCES "T_Etiqueta"("Id")
+);

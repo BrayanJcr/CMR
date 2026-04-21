@@ -62,7 +62,7 @@ namespace CRM.WhatsappCola.Services
                     _db.TMensajeEntrante.Any(m => m.WhatsAppId == entranteDto.WhatsAppId))
                 {
                     respuesta.Estado    = false;
-                    respuesta.Mensage   = "Mensaje duplicado";
+                    respuesta.Respuesta  = "Mensaje duplicado";
                     return respuesta;
                 }
 

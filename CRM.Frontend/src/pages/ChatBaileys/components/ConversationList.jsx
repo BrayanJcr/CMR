@@ -1,11 +1,19 @@
-import React from 'react'
-import { Input, Spin } from 'antd'
+import React, { useState } from 'react'
+import { Input, Spin, Tag, Tooltip } from 'antd'
 import { SearchOutlined, AudioOutlined, PictureOutlined,
-         VideoCameraOutlined, FileOutlined } from '@ant-design/icons'
+         VideoCameraOutlined, FileOutlined, FilterOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import WaAvatar from '../../../components/WaAvatar'
 import { formatPhoneNumber } from '../../../utils/format'
 import ChatContextMenu from './ChatContextMenu'
+
+const ESTADOS = [
+  { key: 'todos',       label: 'Todos',       color: null },
+  { key: 'abierta',     label: 'Abiertas',    color: '#52c41a' },
+  { key: 'en_progreso', label: 'En progreso', color: '#1677ff' },
+  { key: 'resuelta',    label: 'Resueltas',   color: '#8696a0' },
+  { key: 'spam',        label: 'Spam',        color: '#ff4d4f' },
+]
 
 // 0=pendiente, 1/2=enviado (✓ gris), 3=recibido (✓✓ gris), 4=leído (✓✓ azul)
 function SidebarAckTick({ ack }) {
@@ -54,6 +62,7 @@ function ConversationItem({ conv, isActive, onClick, presenceEstado }) {
   const modoBot        = (conv.modoConversacion   || conv.ModoConversacion) === 'bot'
   const ultimoAck      = conv.ultimoAckEstado     ?? conv.UltimoAckEstado ?? null
   const estadoConv     = conv.estadoConversacion  || conv.EstadoConversacion || 'abierta'
+  const etiquetas      = conv.etiquetas           || conv.Etiquetas           || []
 
   const ESTADO_COLOR = { abierta: '#52c41a', en_progreso: '#1677ff', resuelta: '#8696a0', spam: '#ff4d4f' }
 
@@ -160,6 +169,17 @@ function ConversationItem({ conv, isActive, onClick, presenceEstado }) {
 
           {/* Badges derechos */}
           <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+            {/* Etiquetas como dots de colores */}
+            {etiquetas.slice(0, 3).map(t => {
+              const id    = t.id || t.Id
+              const color = t.color || t.Color || '#3B82F6'
+              const name  = t.nombre || t.Nombre || ''
+              return (
+                <Tooltip key={id} title={name}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                </Tooltip>
+              )
+            })}
             {estadoConv !== 'abierta' && (
               <span style={{
                 width: 8, height: 8, borderRadius: '50%',
@@ -184,14 +204,17 @@ function ConversationItem({ conv, isActive, onClick, presenceEstado }) {
 }
 
 export default function ConversationList({ conversations, activeId, loading, onSelect, onRefresh, presence, searchValue, onSearchChange }) {
-  const filtered = searchValue
-    ? conversations.filter(c => {
-        const name   = (c.nombreContacto || c.NombreContacto || '').toLowerCase()
-        const number = (c.numeroCliente  || c.NumeroCliente  || '').toLowerCase()
-        const q      = searchValue.toLowerCase()
-        return name.includes(q) || number.includes(q)
-      })
-    : conversations
+  const [estadoFiltro, setEstadoFiltro] = useState('todos')
+
+  const filtered = conversations.filter(c => {
+    const name   = (c.nombreContacto || c.NombreContacto || '').toLowerCase()
+    const number = (c.numeroCliente  || c.NumeroCliente  || '').toLowerCase()
+    const q      = (searchValue || '').toLowerCase()
+    const matchSearch = !q || name.includes(q) || number.includes(q)
+    const estado = c.estadoConversacion || c.EstadoConversacion || 'abierta'
+    const matchEstado = estadoFiltro === 'todos' || estado === estadoFiltro
+    return matchSearch && matchEstado
+  })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#111b21' }}>
@@ -206,6 +229,37 @@ export default function ConversationList({ conversations, activeId, loading, onS
           style={{ background: '#2a3942', border: 'none', borderRadius: 20, color: '#e9edef', padding: '6px 12px' }}
           allowClear={{ clearIcon: <span style={{ color: '#8696a0' }}>✕</span> }}
         />
+      </div>
+
+      {/* Filter bar — estado */}
+      <div style={{
+        display: 'flex', gap: 4, padding: '6px 10px',
+        background: '#111b21', borderBottom: '1px solid #1f2d34',
+        overflowX: 'auto', flexShrink: 0,
+      }}>
+        {ESTADOS.map(e => {
+          const active = estadoFiltro === e.key
+          return (
+            <button
+              key={e.key}
+              onClick={() => setEstadoFiltro(e.key)}
+              style={{
+                background:  active ? (e.color ?? '#00a884') + '33' : 'transparent',
+                border:      active ? `1px solid ${e.color ?? '#00a884'}66` : '1px solid #2a3942',
+                borderRadius: 12, padding: '2px 9px',
+                color:       active ? (e.color ?? '#00a884') : '#8696a0',
+                fontSize: 11, fontWeight: active ? 600 : 400,
+                cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
+                transition: 'all 0.15s',
+              }}
+            >
+              {e.color && !active && (
+                <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: e.color, marginRight: 4, verticalAlign: 'middle' }} />
+              )}
+              {e.label}
+            </button>
+          )
+        })}
       </div>
 
       {/* Lista */}

@@ -35,6 +35,12 @@ public partial class WA_ColaContext : DbContext
 
     public virtual DbSet<TGrupoEvento> TGrupoEvento { get; set; }
 
+    public virtual DbSet<TNotaConversacion>       TNotaConversacion       { get; set; }
+
+    public virtual DbSet<TConversacionEtiqueta>   TConversacionEtiqueta   { get; set; }
+
+    public virtual DbSet<TRecordatorio>           TRecordatorio           { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<TConversacion>(entity =>
@@ -418,6 +424,43 @@ public partial class WA_ColaContext : DbContext
             entity.Property(e => e.ChatId).IsRequired().HasMaxLength(50).IsUnicode(false);
             entity.Property(e => e.Tipo).IsRequired().HasMaxLength(30).IsUnicode(false);
             entity.Property(e => e.Author).IsRequired().HasMaxLength(30).IsUnicode(false);
+        });
+
+        modelBuilder.Entity<TNotaConversacion>(entity =>
+        {
+            entity.ToTable("T_NotaConversacion");
+            entity.Property(e => e.FechaCreacion).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.Texto).IsRequired();
+            entity.Property(e => e.Usuario).IsRequired().HasMaxLength(100);
+        });
+
+        modelBuilder.Entity<TRecordatorio>(entity =>
+        {
+            entity.ToTable("T_Recordatorio");
+            entity.Property(e => e.FechaRecordatorio).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.FechaCreacion).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.Texto).IsRequired();
+            entity.Property(e => e.UsuarioCreacion).IsRequired().HasMaxLength(100);
+            entity.HasOne(e => e.IdConversacionNavigation)
+                .WithMany(c => c.TRecordatorio)
+                .HasForeignKey(e => e.IdConversacion)
+                .HasConstraintName("FK_Recordatorio_Conversacion");
+        });
+
+        modelBuilder.Entity<TConversacionEtiqueta>(entity =>
+        {
+            entity.ToTable("T_ConversacionEtiqueta");
+            entity.HasKey(e => new { e.IdConversacion, e.IdEtiqueta });
+
+            entity.HasOne(e => e.IdConversacionNavigation)
+                .WithMany(c => c.TConversacionEtiqueta)
+                .HasForeignKey(e => e.IdConversacion)
+                .HasConstraintName("FK_ConvEtiqueta_Conversacion");
+
+            entity.HasOne(e => e.IdEtiquetaNavigation)
+                .WithMany(t => t.TConversacionEtiqueta)
+                .HasForeignKey(e => e.IdEtiqueta)
+                .HasConstraintName("FK_ConvEtiqueta_Etiqueta");
         });
 
         OnModelCreatingPartial(modelBuilder);
